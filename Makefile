@@ -3,7 +3,4 @@ setup:
 	./venv/bin/pip install -r requirements.txt
 
 check:
-	CUDA_VISIBLE_DEVICES= ./venv/bin/python test.py
-	echo PASS/FAIL TO BE DECIDED BY YOU BASED ON OUTPUT PRINTED ABOVE
-	echo IGNORE EXIT CODE
-	exit 1
+	TF_CPP_MIN_LOG_LEVEL=1 CUDA_VISIBLE_DEVICES= ./venv/bin/python test.py
