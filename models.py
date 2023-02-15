@@ -5,14 +5,14 @@ from torch.nn.init import uniform_
 class AsKeras:
     def __init__(self):
         self.use_keras = False
-        self.train = False
-    def __call__(self, train):
-        self.train = train
+        self.kwds = dict(train=False)
+    def __call__(self, **kwds):
+        self.kwds.update(kwds)
         return self
     def __enter__(self):
         self.use_keras = True
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.use_keras = False
+        self.__init__()
 askeras = AsKeras()
 
 
@@ -37,7 +37,9 @@ class Conv2d(Module):
                                  kernel_size  = kernel_size,
                                  bias         = bias,
                                  stride       = stride)
-        self.bias = bias
+        self.use_bias = bias
+        if self.use_bias:
+            self.bias = self.conv.bias
 
     def forward(self, x):
         # make padding like in tensorflow, which right aligns convolutions.
@@ -59,10 +61,10 @@ class Conv2d(Module):
                             kernel_size = self.kernel_size,
                             strides     = self.stride,
                             padding     = "same",
-                            use_bias    = self.bias)
+                            use_bias    = self.use_bias)
         conv.build(x.shape[1:])
         conv_weights = [t_conv_wght_to_k(self.conv.weight)]
-        if self.bias:
+        if self.use_bias:
             conv_weights.append(self.conv.bias.detach().numpy())
         conv.set_weights(conv_weights)
         return conv(x)
@@ -72,9 +74,10 @@ from torch import mean
 from tensorflow import expand_dims, reduce_mean
 from keras.layers import Lambda
 class Mean(Module):
-    def __init__(self, dim):
+    def __init__(self, dim, ignore_in_keras=False):
         super().__init__()
         self.dim = dim
+        self.ignore_in_keras = ignore_in_keras
     def forward(self, x):
         if askeras.use_keras:
             return self.as_keras(x)
@@ -82,6 +85,8 @@ class Mean(Module):
     def rand_init(self):
         pass
     def as_keras(self, x):
+        if self.ignore_in_keras:
+            return x
         dim = {0:0, 1:-1}[self.dim]
         return Lambda(lambda y: expand_dims(reduce_mean(y, dim), dim))(x)
 
@@ -102,6 +107,16 @@ class Cat(Module):
         assert all(len(x.shape) == 4 for x in xs)
         dim = {0:0, 1:-1}[self.dim]
         return Keras_Concatenate(dim)(xs)
+
+
+class Add(Module):
+    def __init__(self, foo):
+        super().__init__()
+    def forward(self, xs):
+        y = xs[0]
+        for x in xs[1:]:
+            y = y + x
+        return y
 
 
 from keras.layers import ReLU as Keras_ReLU
@@ -156,7 +171,7 @@ class BatchNorm(Module):
         running_mean = self.batchnorm.running_mean.detach().numpy()
         running_var  = self.batchnorm.running_var.detach().numpy()
         batchnorm.set_weights([weights, bias, running_mean, running_var])
-        return batchnorm(x, training=askeras.train)
+        return batchnorm(x, training=askeras.kwds["train"])
 
 
 
@@ -358,3 +373,5 @@ class PersonDetect(Module):
         self.p7.rand_init()
         for head in self.heads.values():
             head.rand_init()
+
+
