@@ -226,7 +226,7 @@ class InvertedResidule(Module):
 
 
 class Head(Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, num=4):
         super().__init__()
         self.relu = ReLU(6)
         self.model = Sequential([
@@ -235,7 +235,7 @@ class Head(Module):
                                3,
                                bias=True),
                         self.relu])
-            for i in range(4)
+            for i in range(num)
         ])
 
     def forward(self, x):
