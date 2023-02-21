@@ -91,6 +91,20 @@ class Mean(Module):
         return Lambda(lambda y: expand_dims(reduce_mean(y, dim), dim))(x)
 
 
+class Downsample(Module):
+    def __init__(self, factor, ignore_in_keras=False):
+        super().__init__()
+        assert ignore_in_keras
+        self.factor = factor
+    def forward(self, x):
+        if askeras.use_keras:
+            return x
+        b, c, h, w = x.shape
+        assert not (h%self.factor or w%self.factor)
+        return x.reshape(b, c, h//self.factor, self.factor, w//self.factor, 2
+                         ).mean([3, 5])
+
+
 from keras.layers import Concatenate as Keras_Concatenate
 from torch import cat as torch_cat
 class Cat(Module):
@@ -194,7 +208,7 @@ class Sequential(Module):
             layer.rand_init()
 
 
-class InvertedResidule(Module):
+class InvertedResidual(Module):
     def __init__(self, in_channels, expansion_factor,
                  out_channels=None, stride=1):
         super().__init__()
@@ -256,40 +270,40 @@ class Backbone(Module):
                                   kernel_size=3, stride=2),
                            BatchNorm(4),
                            self.relu]),
-            c2=Sequential([InvertedResidule(in_channels=4,
+            c2=Sequential([InvertedResidual(in_channels=4,
                                             expansion_factor=4,
                                             out_channels=8,
                                             stride=2),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=2)]),
-            c3=Sequential([InvertedResidule(in_channels=8,
+            c3=Sequential([InvertedResidual(in_channels=8,
                                             expansion_factor=6,
                                             stride=2),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6)]),
-            c4=Sequential([InvertedResidule(in_channels=8,
+            c4=Sequential([InvertedResidual(in_channels=8,
                                             expansion_factor=6,
                                             stride=2),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6)]),
-            c5=Sequential([InvertedResidule(in_channels=8,
+            c5=Sequential([InvertedResidual(in_channels=8,
                                                expansion_factor=6,
                                                stride=2),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
-                           InvertedResidule(in_channels=8,
+                           InvertedResidual(in_channels=8,
                                             expansion_factor=6),
                            Conv2d(8, 48, 3),
                            BatchNorm(48),

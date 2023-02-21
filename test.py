@@ -30,7 +30,7 @@ def test_sizes(layer, batch_size, in_channels, shapes):
     return max_diff
 
 
-from models import (Conv2d, ReLU, BatchNorm, InvertedResidule,
+from models import (Conv2d, ReLU, BatchNorm, InvertedResidual,
                     Backbone, Head, PersonDetect)
 def run_tests():
     print("running tests")
@@ -62,7 +62,7 @@ def run_tests():
 
     for stride in 1, 2:
         print(f"testing InvRes (stride={stride})")
-        invres = InvertedResidule(in_channels, expansion_factor, stride=stride)
+        invres = InvertedResidual(in_channels, expansion_factor, stride=stride)
         max_diff = max(test_sizes(invres, batch_size, in_channels, shapes),
                        max_diff)
 
