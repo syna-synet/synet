@@ -1,3 +1,22 @@
+from yolov5.models.yolo import Model
+from yolov5.utils.general import non_max_suppression
+from torch import load, no_grad
+def get_yolov5_model(model_path, input_shape, low_thld, **kwds):
+    ckpt = load(model_path)['model']
+    raw_model = Model(ckpt.yaml)
+    raw_model.load_state_dict(ckpt.state_dict())
+    raw_model.eval()
+    def model(x):
+        with no_grad():
+            xyxyoc = non_max_suppression(raw_model(x/255),
+                                         conf_thres=low_thld,
+                                         iou_thres=.3,
+                                         multi_label=True
+                                         )[0].numpy()
+            return xyxyoc[:,:4], xyxyoc[:,4:].prod(1)
+    return model
+
+
 from models.tf import TFDetect as Yolo_TFDetect
 import tensorflow as tf
 from tensorflow.math import ceil
