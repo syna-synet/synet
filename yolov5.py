@@ -1,6 +1,6 @@
 from yolov5.models.yolo import Model
 from yolov5.utils.general import non_max_suppression
-from torch import load, no_grad
+from torch import load, no_grad, tensor
 def get_yolov5_model(model_path, input_shape, low_thld, **kwds):
     ckpt = load(model_path)['model']
     raw_model = Model(ckpt.yaml)
@@ -8,7 +8,7 @@ def get_yolov5_model(model_path, input_shape, low_thld, **kwds):
     raw_model.eval()
     def model(x):
         with no_grad():
-            xyxyoc = non_max_suppression(raw_model(x/255),
+            xyxyoc = non_max_suppression(raw_model(tensor(x).unsqueeze(0).float()),
                                          conf_thres=low_thld,
                                          iou_thres=.3,
                                          multi_label=True
@@ -83,3 +83,11 @@ class Detect(Yolo_PTDetect):
         tfdetect = TFDetect(*self.args, imgsz=askeras.kwds["imgsz"],
                             w=self, **self.kwds)
         return tfdetect(x)
+
+
+from yolov5.models import yolo
+from . import models
+def yolov5fix():
+    yolo.synet = models
+    yolo.Concat = models.Add
+    yolo.synet.Detect = yolo.Detect = Detect

@@ -237,7 +237,7 @@ class InvertedResidual(Module):
 
     def rand_init(self):
         self.layers.rand_init()
-
+InvertedResidule = InvertedResidual
 
 class Head(Module):
     def __init__(self, in_channels, out_channels, num=4):
