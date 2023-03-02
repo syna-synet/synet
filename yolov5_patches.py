@@ -1,10 +1,12 @@
 from yolov5.models.yolo import Model
 from yolov5.utils.general import non_max_suppression
 from torch import load, no_grad, tensor
-def get_yolov5_model(model_path, input_shape, low_thld, **kwds):
+def get_yolov5_model(model_path, input_shape, low_thld, raw=False,**kwds):
     ckpt = load(model_path)['model']
     raw_model = Model(ckpt.yaml)
     raw_model.load_state_dict(ckpt.state_dict())
+    if raw:
+        return raw_model
     raw_model.eval()
     def model(x):
         with no_grad():
@@ -85,8 +87,10 @@ class Detect(Yolo_PTDetect):
                        )(x)
 
 from yolov5.models import yolo
+from importlib import import_module
 from . import models
-def yolov5fix():
-    yolo.synet = models
-    yolo.Concat = models.Add
-    yolo.synet.Detect = yolo.Detect = Detect
+def patch_yolov5(chip):
+    module = import_module(chip)
+    setattr(yolo, chip, module)
+    yolo.Concat = module.Cat
+    yolo.Detect = module.Detect = Detect
