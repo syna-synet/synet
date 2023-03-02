@@ -1,4 +1,4 @@
-from models.tf import TFDetect as Yolo_TFDetect
+from yolov5.models.tf import TFDetect as Yolo_TFDetect
 import tensorflow as tf
 from tensorflow.math import ceil
 class TFDetect(Yolo_TFDetect):
@@ -42,7 +42,7 @@ class TFDetect(Yolo_TFDetect):
 
 
 from .models import askeras
-from models.yolo import Detect as Yolo_PTDetect
+from yolov5.models.yolo import Detect as Yolo_PTDetect
 class Detect(Yolo_PTDetect):
 
     def __init__(self, *args, **kwds):
@@ -61,6 +61,6 @@ class Detect(Yolo_PTDetect):
         return super().forward(x)
 
     def as_keras(self, x):
-        tfdetect = TFDetect(*self.args, imgsz=askeras.kwds["imgsz"],
-                            w=self, **self.kwds)
-        return tfdetect(x)
+        returnTFDetect(*self.args, imgsz=askeras.kwds["imgsz"],
+                       w=self, **self.kwds
+                       )(x)
