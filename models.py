@@ -110,7 +110,7 @@ class Downsample(Module):
 from keras.layers import Concatenate as Keras_Concatenate
 from torch import cat as torch_cat
 class Cat(Module):
-    def __init__(self, dim):
+    def __init__(self, dim=1):
         super().__init__()
         self.dim=dim
     def forward(self, xs):
