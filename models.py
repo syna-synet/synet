@@ -101,7 +101,9 @@ class Downsample(Module):
             return x
         b, c, h, w = x.shape
         assert not (h%self.factor or w%self.factor)
-        return x.reshape(b, c, h//self.factor, self.factor, w//self.factor, 2
+        return x.reshape(b, c,
+                         h//self.factor, self.factor,
+                         w//self.factor, self.factor
                          ).mean([3, 5])
 
 
