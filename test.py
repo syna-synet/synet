@@ -5,7 +5,8 @@ def test_arr(out1, out2):
     return absolute(out1 - out2).max()
 
 
-from models import t_actv_to_k, askeras
+from models import askeras
+t_actv_to_k = lambda actv: actv.detach().numpy().transpose(0, 2, 3, 1)
 def test_layer(layer, torch_inp):
     tout = layer(torch_inp)
     with askeras(train=True):
@@ -22,8 +23,10 @@ def test_layer(layer, torch_inp):
 
 
 from torch import rand
+from torch.nn.init import uniform_
 def test_sizes(layer, batch_size, in_channels, shapes):
-    layer.rand_init()
+    for name, param in layer.parameters():
+        uniform_(param, -1)
     max_diff = max(test_layer(layer,rand(batch_size,in_channels,*shape)*2-1)
                    for shape in shapes)
     print("max_diff:", max_diff)
