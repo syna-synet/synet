@@ -1,22 +1,32 @@
 * Introduction
 
+  Not Yet Implemented
+
 * Installation
 
+  To install via pip:
+
   pip install git+ssh://gitms@git.synaptics.com/git/ml/projects/synet.git
+
+  or if you have cloned to a local repository:
+
+  pip install /path/to/local/synet [-e]
+
+  where '-e' will allow you to make edits after install
 
 * Train
 
   The synet repository provides a thin wrapper around yolov5 training for simple traning situations.  The basic usage is
 
-  python -m synet train [synaptics_chip] yolov5 [yolov5 args]
+  python -m synet train [synaptics_chip] [yolov5 args]
 
   For instance, if you have a custom dataset prepared in the yolo format, you can train a qVGA (320x240) model for the katana chip with
 
-  python -m synet train katana yolov5 --cfg kqvga3-5.2 --imsz 320 --data /path/to/custom_dataset.yml
+  python -m synet train katana --cfg kqvga3-5.2.yaml --imsz 320 --data /path/to/custom_dataset.yml
 
   or a VGA (640x480) model with
 
-  python -m synet train katana yolov5 --cfg kvga3-7.2 --imsz 640 --data /path/to/custom_dataset.yml
+  python -m synet train katana --cfg kvga3-7.2.yaml --imsz 640 --data /path/to/custom_dataset.yml
 
   By default, this will place the best weights at runs/train/exp/weights/best.pt relative to your current working directory.  (See yolo --project and --name options)
 
@@ -24,21 +34,27 @@
 
   The synet also includes the ability to quantize models
 
-  python -m synet quantize --input-shape Y_SHAPE X_SHAPE MODEL_PT_SAVE
+  python -m synet quantize --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
 
   To quantize your qVGA model, you can run
 
-  python -m synet quantize --input-shape 240 320 runs/train/exp/weights/best.pt
+  python -m synet quantize --input-shape 240 320 --model runs/train/exp/weights/best.pt
 
   To quantize a VGA model, simply change the input shape
 
-  python -m synet quantize --input-shape 480 640 runs/train/exp/weights/best.pt
+  python -m synet quantize --input-shape 480 640 --model runs/train/exp/weights/best.pt
+
+  you can also specify a model yaml for --model.  This will let you
+  inspect the architecture, though it will not be a trained model, so
+  the model output will be useless.
 
 * Visualize
 
-  
+  Not Yet Implemented
 
 * Advanced
+
+  In Progress...
 
 ** Creating Custom Models
    
