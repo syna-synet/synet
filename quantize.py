@@ -1,5 +1,23 @@
 #!/usr/bin/env python
 
+from argparse import ArgumentParser
+from yolov5_patches import get_yolov5_model, patch_yolov5
+from keras import Input, Model
+from base import askeras
+from torch import no_grad
+def main(chip):
+    parser = ArgumentParser()
+    parser.add_argument("--input-shape", nargs=2, type=int)
+    parser.add_argument("model")
+    args = parser.parse_args()
+    patch_yolov5(chip)
+    data_shape = args.input_shape+[1]
+    inp = Input(data_shape, batch_size=1)
+    model = get_yolov5_model(args.model, raw=True)
+    with askeras(imgsz=args.input_shape), no_grad():
+        kmodel = Model(inp, model(inp))
+    quantize(kmodel, data_shape, args.model[:args.model.rfind(".")]+".tflite")
+
 from numpy import float32
 from numpy.random import rand
 def phony_data(data_shape):

@@ -68,17 +68,11 @@ from torch import mean
 from tensorflow import expand_dims, reduce_mean
 from keras.layers import Lambda
 class Grayscale(Module):
-    def __init__(self, ch):
-        super().__init__()
     def forward(self, x):
         if askeras.use_keras:
             return x
-        return x.mean(self.dim, keepdims=True)
-    def as_keras(self, x):
-        if self.ignore_in_keras:
-            return x
-        dim = {0:0, 1:-1}[self.dim]
-        return Lambda(lambda y: expand_dims(reduce_mean(y, dim), dim))(x)
+        return x.mean(1, keepdims=True)
+
 
 
 from keras.layers import Concatenate as Keras_Concatenate

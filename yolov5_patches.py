@@ -1,7 +1,11 @@
 from yolov5.models.yolo import Model
 from yolov5.utils.general import non_max_suppression
 from torch import load, no_grad, tensor
-def get_yolov5_model(model_path, input_shape, low_thld, raw=False,**kwds):
+def get_yolov5_model(model_path, input_shape=(640,480), low_thld=0,
+                     raw=False, **kwds):
+    if model_path.endswith(".yml") or model_path.endswith(".yaml"):
+        assert raw
+        return Model(model_path)
     ckpt = load(model_path)['model']
     raw_model = Model(ckpt.yaml)
     raw_model.load_state_dict(ckpt.state_dict())
@@ -62,7 +66,7 @@ class TFDetect(Yolo_TFDetect):
             if self.training else (tf.concat(z, 1),)
 
 
-from .models import askeras
+from base import askeras
 from yolov5.models.yolo import Detect as Yolo_PTDetect
 class Detect(Yolo_PTDetect):
 
@@ -82,13 +86,13 @@ class Detect(Yolo_PTDetect):
         return super().forward(x)
 
     def as_keras(self, x):
-        returnTFDetect(*self.args, imgsz=askeras.kwds["imgsz"],
-                       w=self, **self.kwds
-                       )(x)
+        return TFDetect(*self.args, imgsz=askeras.kwds["imgsz"],
+                        w=self, **self.kwds
+                        )(x)
+
 
 from yolov5.models import yolo
 from importlib import import_module
-from . import models
 def patch_yolov5(chip):
     module = import_module(chip)
     setattr(yolo, chip, module)

@@ -35,12 +35,14 @@ class InvertedResidual(Module):
             BatchNorm(out_channels)
         ])
         self.stride = stride
+        self.cheq = in_channels == out_channels
+        assert self.stride in (1, 2)
 
     def forward(self, x):
         y = self.layers(x)
-        if self.stride == 1:
+        if self.stride == 1 and self.cheq:
             return x + y
-        if self.stride == 2:
+        if self.stride == 2 or (self.stride == 1 and not self.cheq):
             return y
 
 
