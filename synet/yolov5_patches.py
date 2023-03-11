@@ -66,7 +66,7 @@ class TFDetect(Yolo_TFDetect):
             if self.training else (tf.concat(z, 1),)
 
 
-from base import askeras
+from .base import askeras
 from yolov5.models.yolo import Detect as Yolo_PTDetect
 class Detect(Yolo_PTDetect):
 
@@ -94,7 +94,7 @@ class Detect(Yolo_PTDetect):
 from yolov5.models import yolo
 from importlib import import_module
 def patch_yolov5(chip):
-    module = import_module(chip)
+    module = import_module(f"..{chip}", __name__)
     setattr(yolo, chip, module)
     yolo.Concat = module.Cat
     yolo.Detect = module.Detect = Detect

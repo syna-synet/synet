@@ -57,9 +57,7 @@ class Detect(PC_PTDetect):
                         )(x)
 
 from models import yolo
-import train
 from importlib import import_module
-from argparse import ArgumentParser
 def patch_custom(chip):
     # patch custom.models.yolo
     module = import_module(chip)

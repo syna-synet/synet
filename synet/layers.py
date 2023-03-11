@@ -1,6 +1,6 @@
 from torch.nn import Module
 
-from base import ReLU, BatchNorm, Conv2d, askeras
+from .base import ReLU, BatchNorm, Conv2d, askeras
 
 
 from torch.nn import ModuleList as Torch_Modulelist
@@ -15,7 +15,7 @@ class Sequential(Module):
         return x
 
 
-from base import BatchNorm
+from .base import BatchNorm
 class InvertedResidual(Module):
     def __init__(self, in_channels, expansion_factor,
                  out_channels=None, stride=1):
