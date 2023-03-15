@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 from importlib import import_module
-import sys
+from sys import argv
 from .zoo import find_model_path
 
 
@@ -10,7 +10,8 @@ parser.add_argument("mode")
 parser.add_argument("chip")
 parser.add_argument("--cfg")
 args = parser.parse_known_args()[0]
-sys.argv = sys.argv[2:]
+argv.remove(args.mode)
+argv.remove(args.chip)
 
 
 # run synet functions
@@ -23,6 +24,7 @@ if args.mode in ("quantize", "test"):
 from .yolov5_patches import patch_yolov5
 patch_yolov5(args.chip)
 module = import_module(f"yolov5.{args.mode}")
-kwds = vars(module.parse_opt())
-if args.cfg: kwds['cfg'] = find_model_path(args.chip, args.cfg)
-module.run(**kwds)
+opt = module.parse_opt()
+if args.cfg: opt.cfg = find_model_path(args.chip, args.cfg)
+print("foo")
+module.main(opt)

@@ -60,11 +60,11 @@
   format, you can train a qVGA (320x240) model for the katana chip
   with
 
-  python -m synet train katana --cfg kqvga3-5.2.yaml --imsz 320 --data /path/to/custom_dataset.yaml
+  python -m synet train katana --cfg kqvga3-5.2.yaml --imgsz 320 --data /path/to/custom_dataset.yaml
 
   or a VGA (640x480) model with
 
-  python -m synet train katana --cfg kvga3-7.2.yaml --imsz 640 --data /path/to/custom_dataset.yml
+  python -m synet train katana --cfg kvga3-7.2.yaml --imgsz 640 --data /path/to/custom_dataset.yml
 
   By default, this will place the best weights at
   runs/train/exp/weights/best.pt relative to your current working
