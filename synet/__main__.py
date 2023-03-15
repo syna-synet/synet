@@ -1,22 +1,28 @@
-from importlib import import_module
-from os.path import join, dirname, isfile
-from sys import argv
 from argparse import ArgumentParser
+from importlib import import_module
+import sys
 from .zoo import find_model_path
 
 
+# parse arguments
 parser = ArgumentParser()
 parser.add_argument("mode")
 parser.add_argument("chip")
 parser.add_argument("--cfg")
 args = parser.parse_known_args()[0]
+sys.argv = sys.argv[2:]
 
 
-assert args.mode in ("train", "quantize")
-if args.mode == 'train':
-    from .yolov5_patches import patch_yolov5
-    from yolov5.train import run
-    patch_yolov5(args.chip)
-    run(cfg=find_model_path(args.chip, args.cfg))
-else:
-    import_module(f".{args.mode}", "synet").main(args.chip)
+# run synet functions
+if args.mode in ("quantize", "test"):
+    import_module(f"synet.{args.mode}").main(args.chip)
+    exit()
+
+
+# run yolov5 functions
+from .yolov5_patches import patch_yolov5
+patch_yolov5(args.chip)
+module = import_module(f"yolov5.{args.mode}")
+kwds = vars(module.parse_opt())
+if args.cfg: kwds['cfg'] = find_model_path(args.chip, args.cfg)
+module.run(**kwds)

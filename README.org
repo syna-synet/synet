@@ -1,48 +1,88 @@
 * Introduction
 
-  Not Yet Implemented
+  Thie synet repository is a library for developing networks for
+  Synaptics vision chips.  It mainly consists of model component
+  definitions organized like so:
+
+  - synet.base
+    - low-level network components
+  - synet.layers
+    - Useful high-level layers
+  - synet.katana
+    - low-level and high-level layers that run on the Katana chip
+  - synet.saber
+    - low-level and high-level layers that run on the Saber chip
+
+  The main benefits of using these are as follows:
+
+  - Models built from components in synet.[chip] are garunteed to run
+    on [chip], provided memory constraints are kept (see [[profiling]]).
+  - When (building, exporting, profiling, not sure yet), synet will
+    print stats on how efficient your achitecture is, and how to
+    improve it.
+  - Models built from synet and quantized via synet won't have
+    extraneous layers, suffer from different padding heuristics, etc.
+
+  In addition to model components, synet also offers a thin wrapper
+  around YOLOv5 which allows you to run YOLOv5 with models defined
+  exclusively with synet layers.  Any top-level YOLOv5 module will run
+  through synet.  The basic syntax is:
+
+  python -m synet [YOLOv5 module] [Synaptics chip] [YOLOv5 args]...
+
+  However, you should use synet's quantize instead of YOLOv5's export
+  (see [[Quantize]]).  We give some examples/explainations for basic
+  YOLOv5 usage here, but for any further questions about YOLOv5, you
+  should consult the YOLOv5 github page:
+  [[https://github.com/ultralytics/yolov5]]
 
 * Installation
 
   To install via pip:
 
-  pip install git+ssh://gitms@git.synaptics.com/git/ml/projects/synet.git
+  pip install -U git+ssh://gitms@git.synaptics.com/git/ml/projects/synet.git
 
   or if you have cloned to a local repository:
 
-  pip install /path/to/local/synet [-e]
+  pip install -U /path/to/local/synet [-e]
 
-  where '-e' will allow you to make edits after install
+  where '-e' will allow you to make edits to your local clone after
+  install.
 
 * Train
 
-  The synet repository provides a thin wrapper around yolov5 training for simple traning situations.  The basic usage is
+  The synet repository provides a thin wrapper around yolov5 training
+  for simple traning situations.  The basic usage is
 
   python -m synet train [synaptics_chip] [yolov5 args]
 
-  For instance, if you have a custom dataset prepared in the yolo format, you can train a qVGA (320x240) model for the katana chip with
+  For instance, if you have a custom dataset prepared in the yolo
+  format, you can train a qVGA (320x240) model for the katana chip
+  with
 
-  python -m synet train katana --cfg kqvga3-5.2.yaml --imsz 320 --data /path/to/custom_dataset.yml
+  python -m synet train katana --cfg kqvga3-5.2.yaml --imsz 320 --data /path/to/custom_dataset.yaml
 
   or a VGA (640x480) model with
 
   python -m synet train katana --cfg kvga3-7.2.yaml --imsz 640 --data /path/to/custom_dataset.yml
 
-  By default, this will place the best weights at runs/train/exp/weights/best.pt relative to your current working directory.  (See yolo --project and --name options)
+  By default, this will place the best weights at
+  runs/train/exp/weights/best.pt relative to your current working
+  directory.  (See yolo --project and --name options)
 
 * Quantize
 
   The synet also includes the ability to quantize models
 
-  python -m synet quantize --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
+  python -m synet quantize katana --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
 
   To quantize your qVGA model, you can run
 
-  python -m synet quantize --input-shape 240 320 --model runs/train/exp/weights/best.pt
+  python -m synet quantize katana --input-shape 240 320 --model runs/train/exp/weights/best.pt
 
   To quantize a VGA model, simply change the input shape
 
-  python -m synet quantize --input-shape 480 640 --model runs/train/exp/weights/best.pt
+  python -m synet quantize katana --input-shape 480 640 --model runs/train/exp/weights/best.pt
 
   you can also specify a model yaml for --model.  This will let you
   inspect the architecture, though it will not be a trained model, so
@@ -50,7 +90,10 @@
 
 * Visualize
 
-  Not Yet Implemented
+  You can visualize your trained model on some data using YOLOv5's
+  detect function like so:
+
+  python -m synet detect katana --weights runs/train/exp/weights/best.pt --source /path/to/image/video/url/etc
 
 * Advanced
 
