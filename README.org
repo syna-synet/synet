@@ -16,7 +16,7 @@
   The main benefits of using these are as follows:
 
   - Models built from components in synet.[chip] are garunteed to run
-    on [chip], provided memory constraints are kept (see [[profiling]]).
+    on [chip], provided memory constraints are kept (see [[Profiling]]).
   - When (building, exporting, profiling, not sure yet), synet will
     print stats on how efficient your achitecture is, and how to
     improve it.
@@ -28,7 +28,7 @@
   exclusively with synet layers.  Any top-level YOLOv5 module will run
   through synet.  The basic syntax is:
 
-  python -m synet [YOLOv5 module] [Synaptics chip] [YOLOv5 args]...
+  python -m synet [YOLOv5 MODULE] [SYNAPTICS CHIP] [YOLOv5 ARGS]...
 
   However, you should use synet's quantize instead of YOLOv5's export
   (see [[Quantize]]).  We give some examples/explainations for basic
@@ -44,7 +44,7 @@
 
   or if you have cloned to a local repository:
 
-  pip install -U /path/to/local/synet [-e]
+  pip install -U /PATH/TO/LOCAL/SYNET [-e]
 
   where '-e' will allow you to make edits to your local clone after
   install.
@@ -54,7 +54,7 @@
   The synet repository provides a thin wrapper around yolov5 training
   for simple traning situations.  The basic usage is
 
-  python -m synet train [synaptics_chip] [yolov5 args]
+  python -m synet train [SYNAPTICS CHIP] [YOLOv5 ARGS]
 
   For instance, if you have a custom dataset prepared in the yolo
   format, you can train a qVGA (320x240) model for the katana chip
@@ -74,7 +74,7 @@
 
   The synet also includes the ability to quantize models
 
-  python -m synet quantize katana --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
+  python -m synet quantize [SYNAPTICS CHIP] --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
 
   To quantize your qVGA model, you can run
 
@@ -93,15 +93,19 @@
   You can visualize your trained model on some data using YOLOv5's
   detect function like so:
 
-  python -m synet detect katana --weights runs/train/exp/weights/best.pt --source /path/to/image/video/url/etc
+  python -m synet detect katana --weights runs/train/exp/weights/best.pt --source /PATH/TO/IMAGE/VIDEO/URL/ETC
 
 * Advanced
 
-  In Progress...
-
 ** Creating Custom Models
+
+*** Profiling
    
 ** Custom Training
+
+*** YOLOv5 with Custom Data
+
+*** BYO Training Code
 
 ** Quantizing from Python
 

@@ -3,11 +3,14 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mypackage"
-version = "0.0.1"
+name = "synet"
+version = "0.0.2"
 dependencies = [
     "torch",
     "keras",
     "tensorflow",
     "yolov5",
 ]
+
+[tool.setuptools.package-data]
+synet = ["zoo/**/*.yaml"]
