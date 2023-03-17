@@ -1,3 +1,5 @@
 venv*
 **/__pycache__
 mypackage.egg-info
+build
+synet.egg-info
