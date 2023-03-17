@@ -1,6 +1,6 @@
 * Introduction
 
-  Thie synet repository is a library for developing networks for
+  The synet repository is a library for developing networks for
   Synaptics vision chips.  It mainly consists of model component
   definitions organized like so:
 
@@ -15,85 +15,95 @@
 
   The main benefits of using these are as follows:
 
-  - Models built from components in synet.[chip] are garunteed to run
+  - Models built from components in synet.[chip] are guaranteed to run
     on [chip], provided memory constraints are kept (see [[Profiling]]).
   - When (building, exporting, profiling, not sure yet), synet will
-    print stats on how efficient your achitecture is, and how to
+    print stats on how efficient your architecture is, and how to
     improve it.
   - Models built from synet and quantized via synet won't have
     extraneous layers, suffer from different padding heuristics, etc.
 
   In addition to model components, synet also offers a thin wrapper
   around YOLOv5 which allows you to run YOLOv5 with models defined
-  exclusively with synet layers.  Any top-level YOLOv5 module will run
-  through synet.  The basic syntax is:
+  exclusively with synet layers.  Any top-level YOLOv5 function
+  (train, detect, val, etc.) will run through synet.  The basic syntax
+  is:
 
-  python -m synet [YOLOv5 MODULE] [SYNAPTICS CHIP] [YOLOv5 ARGS]...
+  python -m synet [YOLOv5 MODULE] [YOLOv5 ARGS]...
 
   However, you should use synet's quantize instead of YOLOv5's export
-  (see [[Quantize]]).  We give some examples/explainations for basic
+  (see [[Quantize]]).  We give some examples/explanations for basic
   YOLOv5 usage here, but for any further questions about YOLOv5, you
   should consult the YOLOv5 github page:
   [[https://github.com/ultralytics/yolov5]]
 
 * Installation
 
+  In more complex setups, you should create a virtual environment
+
+  python -m venv /DESIRED/VENV/PATH
+
+  and activate that environment. (Needs to be done in each shell.)
+
+  source /DESIRED/VENV/PATH/bin/activate
+
   To install via pip:
 
-  pip install -U git+ssh://gitms@git.synaptics.com/git/ml/projects/synet.git
+  pip install git+ssh://gitms@git.synaptics.com/git/ml/projects/synet.git
 
   or if you have cloned to a local repository:
 
-  pip install -U /PATH/TO/LOCAL/SYNET [-e]
+  pip install /PATH/TO/LOCAL/SYNET [-e]
 
   where '-e' will allow you to make edits to your local clone after
   install.
 
 * Train
 
-  The synet repository provides a thin wrapper around yolov5 training
-  for simple traning situations.  The basic usage is
+  The synet repository provides a thin wrapper around YOLOv5 training
+  for simple training situations.  The basic usage is
 
-  python -m synet train [SYNAPTICS CHIP] [YOLOv5 ARGS]
+  python -m synet train [YOLOv5 ARGS]
 
-  For instance, if you have a custom dataset prepared in the yolo
+  For instance, if you have a custom dataset prepared in the YOLO
   format, you can train a qVGA (320x240) model for the katana chip
   with
 
-  python -m synet train katana --cfg kqvga3-5.2.yaml --imgsz 320 --data /path/to/custom_dataset.yaml
+  python -m synet train --cfg katana-qvga.yaml --data /PATH/TO/CUSTOM_DATASET.YAML --project .
 
-  or a VGA (640x480) model with
+  where '--project .' puts all output in the current working directory
+  (in a folders named exp[#], see --name and --exists-ok in the YOLOv5
+  docs).  Similarly, if you would like to train a VGA (480x640) model
+  (for instance, for data with much smaller objects), you could run
 
-  python -m synet train katana --cfg kvga3-7.2.yaml --imgsz 640 --data /path/to/custom_dataset.yml
+  python -m synet train --cfg katana-vga.yaml --data /PATH/TO/CUSTOM_DATASET.YAML --project .
 
-  By default, this will place the best weights at
-  runs/train/exp/weights/best.pt relative to your current working
-  directory.  (See yolo --project and --name options)
+  This will place the best weights at ./exp/weights/best.pt.
 
 * Quantize
 
-  The synet also includes the ability to quantize models
+  The synet repository also includes the ability to quantize models
 
-  python -m synet quantize [SYNAPTICS CHIP] --input-shape Y_SHAPE X_SHAPE --model MODEL_PT_SAVE
+  python -m synet quantize --weights MODEL_PT_SAVE
 
-  To quantize your qVGA model, you can run
+  For instance, running:
 
-  python -m synet quantize katana --input-shape 240 320 --model runs/train/exp/weights/best.pt
+  python -m synet quantize --weights ./exp/weights/best.pt
 
-  To quantize a VGA model, simply change the input shape
+  will create a tflite at ./exp/weights/best.tflite.  You may also
+  specify a model yaml like so:
 
-  python -m synet quantize katana --input-shape 480 640 --model runs/train/exp/weights/best.pt
+  python -m synet quantize --cfg kqvga3-5.2.yaml
 
-  you can also specify a model yaml for --model.  This will let you
-  inspect the architecture, though it will not be a trained model, so
-  the model output will be useless.
+  This will let you inspect the architecture, though it will not be a
+  trained model, so the model output will be useless.
 
 * Visualize
 
   You can visualize your trained model on some data using YOLOv5's
   detect function like so:
 
-  python -m synet detect katana --weights runs/train/exp/weights/best.pt --source /PATH/TO/IMAGE/VIDEO/URL/ETC
+  python -m synet detect --weights runs/train/exp/weights/best.pt --source /PATH/TO/IMAGE/VIDEO/URL/ETC
 
 * Advanced
 
@@ -103,7 +113,52 @@
    
 ** Custom Training
 
-*** YOLOv5 with Custom Data
+*** YOLOv5 with Data Subset
+
+    The first step to do to train on a custom dataset is to get the
+    data in the YOLO format.  See:
+    [[https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data]].
+    Generally, datasets have multiple classes.  However, tiny neural
+    network models need to be much more specialized, so you generally
+    train on only a few classes.  To this end, synet provides one
+    additional convenience function to create a data subset with the
+    desired classes.  However, it only supports datasets where the
+    splits are specified as a directory, not as a text file or list
+    (the most common, simple use case).  Suppose you have a dataset
+    specified at OLD_YAML with the following content:
+
+    path: /data
+    train: images/train
+    val: images/val
+    names:
+      0: bicycle
+      1: car
+      2: bus
+
+    If you create a new yaml at NEW_YAML with the following content:
+
+    path: /data
+    train: images/train_subset
+    val: images/val_subset
+    names:
+      0: bicycle
+      1: bus
+
+    then you can run
+
+    python -m synet data_subset [--max-bg-ratio MAX_BG_RATIO] OLD_YAML NEW_YAML
+
+    This will create new directories at /data/images/train_subset,
+    /data/images/val_subset, /data/labels/train_subset, and
+    /data/labels/val_subset.  The new images directories will be
+    filled with symlinks to images from the original, corresponding,
+    directories, and the new labels directories will be filled with
+    modified labels with pruned classes missing (e.g. car) and kept
+    classes reassigned (2 -> 1).  Additionally, if --max-bg-ratio is
+    specified, then no more than MAX_BG_RATIO of the output dataset
+    will be background samples (background samples pruned randomly).
+    If every sample should have at least one label, then set
+    --max-bg-ratio to 0 (not recommended).
 
 *** BYO Training Code
 
@@ -111,4 +166,4 @@
 
 ** Modifying and/or Contributing
 
-*** running the test squite
+*** running the test suite
