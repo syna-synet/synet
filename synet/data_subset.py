@@ -15,7 +15,7 @@ def parse_opt():
 
 
 from os import listdir, makedirs, symlink
-from os.path import join, relpath, isfile
+from os.path import join, abspath, isfile
 from random import shuffle
 from yaml import safe_load as load
 def run(old_yaml, new_yaml, max_bg_ratio):
@@ -45,10 +45,10 @@ def run(old_yaml, new_yaml, max_bg_ratio):
                 background.append((oldim, newim))
             else:
                 fg += 1
-                symlink(relpath(oldim, new[split]), newim)
+                symlink(abspath(oldim), newim)
                 open(get_label(newim), 'w').writelines(labels)
 
         shuffle(background)
         background = background[:int(max_bg_ratio * fg / (1 - max_bg_ratio))]
         for oldim, newim in background:
-            symlink(relpath(oldim, new[split]), newim)
+            symlink(abspath(oldim), newim)
