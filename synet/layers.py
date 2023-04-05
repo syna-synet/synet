@@ -22,14 +22,15 @@ class InvertedResidual(Module):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
+        hidden = int(in_channels * expansion_factor)
         self.layers = Sequential([
             Conv2d(in_channels,
-                   out_channels = in_channels * expansion_factor,
+                   out_channels = hidden,
                    kernel_size  = 3,
                    stride       = stride),
-            BatchNorm(in_channels * expansion_factor),
+            BatchNorm(hidden),
             ReLU(6),
-            Conv2d(in_channels  = in_channels * expansion_factor,
+            Conv2d(in_channels  = hidden,
                    out_channels = out_channels,
                    kernel_size  = 1),
             BatchNorm(out_channels)

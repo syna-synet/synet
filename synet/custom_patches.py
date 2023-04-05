@@ -1,4 +1,4 @@
-from base import askeras
+from .base import askeras
 
 from models.tf import TFDetect as PC_TFDetect
 from tensorflow.math import ceil
@@ -60,7 +60,7 @@ from models import yolo
 from importlib import import_module
 def patch_custom(chip):
     # patch custom.models.yolo
-    module = import_module(chip)
+    module = import_module(f'..{chip}', __name__)
     setattr(yolo, chip, module)
     yolo.Concat = module.Cat
     yolo.Detect = module.Detect = Detect
