@@ -1,13 +1,23 @@
 #!/usr/bin/env python
+from argparse import ArgumentParser
+def parse_opt():
+    """dummy parse_opt entry func"""
+    return ArgumentParser().parse_args()
+
 from numpy import absolute
 def test_arr(out1, out2):
+    """compare two arrays.  Return the max difference."""
     assert all(s1 == s2 for s1, s2 in zip(out1.shape, out2.shape))
     return absolute(out1 - out2).max()
 
 
-from models import askeras
+from .base import askeras
 t_actv_to_k = lambda actv: actv.detach().numpy().transpose(0, 2, 3, 1)
 def test_layer(layer, torch_inp):
+    """Given synet layer, test on some torch input activations and
+return max error between two output activations
+
+    """
     tout = layer(torch_inp)
     with askeras(train=True):
         kout = layer(t_actv_to_k(torch_inp))
@@ -25,7 +35,11 @@ def test_layer(layer, torch_inp):
 from torch import rand
 from torch.nn.init import uniform_
 def test_sizes(layer, batch_size, in_channels, shapes):
-    for name, param in layer.parameters():
+    """Run test_layer on a set of random input shapes.  Prints the max
+difference between all configurations.
+
+    """
+    for param in layer.parameters():
         uniform_(param, -1)
     max_diff = max(test_layer(layer,rand(batch_size,in_channels,*shape)*2-1)
                    for shape in shapes)
@@ -33,9 +47,12 @@ def test_sizes(layer, batch_size, in_channels, shapes):
     return max_diff
 
 
-from models import (Conv2d, ReLU, BatchNorm, InvertedResidual,
-                    Backbone, Head, PersonDetect)
-def run_tests():
+from .base import Conv2d, ReLU, BatchNorm
+def run():
+    """Run all test cases.  Print errors.  Throw error if max error
+encountered is greater than 1e-5
+
+    """
     print("running tests")
     batch_size = 2
     in_channels = 5
@@ -63,38 +80,12 @@ def run_tests():
     max_diff = max(test_sizes(batchnorm, batch_size, in_channels, shapes),
                    max_diff)
 
-    for stride in 1, 2:
-        print(f"testing InvRes (stride={stride})")
-        invres = InvertedResidual(in_channels, expansion_factor, stride=stride)
-        max_diff = max(test_sizes(invres, batch_size, in_channels, shapes),
-                       max_diff)
-
-    print("testing Backbone")
-    backbone = Backbone()
-    max_diff = max(test_sizes(backbone, batch_size, in_channels=1,
-                              shapes=shapes),
-                   max_diff)
-
-    print("testing Head")
-    head = Head(in_channels, out_channels)
-    max_diff = max(test_sizes(head, batch_size, in_channels, shapes),
-                   max_diff)
-
-    print("testing PersonDetect")
-    persondetect = PersonDetect()
-    max_diff = max(test_sizes(persondetect, batch_size,
-                              in_channels=1, shapes=shapes),
-                   max_diff)
 
     print("OVERALL MAXIMUM DIFFERENCE:", max_diff)
-    tolerance = 1e-2
+    tolerance = 1e-5
     if max_diff > tolerance:
         print(f"maximum difference greater than tolerance ({tolerance}).")
         print("Tests failed")
         exit(1)
     print(f"maximum difference less than tolerance ({tolerance}).")
     print("Tests passed.")
-
-
-if __name__ == "__main__":
-    run_tests()

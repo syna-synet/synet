@@ -1,8 +1,22 @@
+"""base.py is the "export" layer of synet.  As such, it includes the
+logic of how to run as a keras model.  This is handled by cheking the
+'askeras' context manager, and running in "keras mode" if that context
+is enabled.  As a rule of thumb to differentiate between base.py,
+layers.py, and [chip].py:
+
+- base.py should only import from torch, keras, and tensorflow.
+- layers.py should only import from base.py.
+- [chip].py should only import from base.py and layers.py.
+"""
+
 from torch.nn import Module
-from torch.nn.init import uniform_
 
 
 class AsKeras:
+    """AsKeras is a context manager used to export from pytorch to
+keras.  See test.py and quantize.py for examples.
+
+    """
     def __init__(self):
         self.use_keras = False
         self.kwds = dict(train=False)
@@ -16,11 +30,17 @@ class AsKeras:
 askeras = AsKeras()
 
 
-t_conv_wght_to_k = lambda wght: wght.detach().numpy().transpose(2, 3, 1, 0)
 from torch.nn import Conv2d as Torch_Conv2d
 from torch.nn.functional import pad
 from keras.layers import Conv2D as Keras_Conv2d
 class Conv2d(Module):
+    """Convolution operator which ensures padding is done equivalently
+between PyTorch and TensorFlow.  Currently, only supports kernel_size
+and stride combose specified in first assert in __init__.  If you add
+more supported configurations, be sure to add those configurations to
+test.py.
+
+    """
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  bias=False):
         super().__init__()
@@ -39,14 +59,16 @@ class Conv2d(Module):
             self.bias = self.conv.bias
 
     def forward(self, x):
-        # make padding like in tensorflow, which right aligns convolutions.
         if askeras.use_keras:
             return self.as_keras(x)
+
+        # make padding like in tensorflow, which right aligns convolutions.
         if self.kernel_size == 3:
             if self.stride == 1:
                 x = pad(x, (1,1,1,1))
             elif self.stride == 2:
                 x = pad(x, (x.shape[-1]%2, 1, x.shape[-2]%2, 1))
+
         return self.conv(x)
 
     def as_keras(self, x):
@@ -68,6 +90,14 @@ from torch import mean
 from tensorflow import expand_dims, reduce_mean
 from keras.layers import Lambda
 class Grayscale(Module):
+    """Training frameworks often fix input channels to 3.  This
+grayscale layer can be added to the beginning of a model to convert to
+grayscale.  This layer is ignored when converting to tflite.  The end
+result is that the pytorch model can take any number of input
+channels, but the tensorflow (tflite) model expects exactly one input
+channel.
+
+    """
     def forward(self, x):
         if askeras.use_keras:
             return x
@@ -78,17 +108,14 @@ class Grayscale(Module):
 from keras.layers import Concatenate as Keras_Concatenate
 from torch import cat as torch_cat
 class Cat(Module):
-    def __init__(self, dim=1):
-        super().__init__()
-        self.dim=dim
+    """Concatenate along feature dimension."""
     def forward(self, xs):
         if askeras.use_keras:
             return self.as_keras(xs)
-        return torch_cat(xs, dim=self.dim)
+        return torch_cat(xs, dim=1)
     def as_keras(self, xs):
         assert all(len(x.shape) == 4 for x in xs)
-        dim = {0:0, 1:-1}[self.dim]
-        return Keras_Concatenate(dim)(xs)
+        return Keras_Concatenate(-1)(xs)
 
 
 from keras.layers import ReLU as Keras_ReLU
@@ -135,3 +162,17 @@ class BatchNorm(Module):
         running_var  = self.batchnorm.running_var.detach().numpy()
         batchnorm.set_weights([weights, bias, running_mean, running_var])
         return batchnorm(x, training=askeras.kwds["train"])
+
+
+from torch.nn import ModuleList as Torch_Modulelist
+class Sequential(Module):
+    def __init__(self, sequence):
+        super().__init__()
+        self.ml = Torch_Modulelist(sequence)
+
+    def forward(self, x):
+        for layer in self.ml:
+            x = layer(x)
+        return x
+
+
