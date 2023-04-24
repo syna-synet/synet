@@ -23,12 +23,13 @@ def interpret_model_enable_chip(args):
         # enable chip
         yaml = safe_load(open(args.cfg))
         patch_yolov5(yaml['chip'])
-    elif args.weights:
+    elif args.weights and not args.weights.endswith(".tflite"):
         # enable chip
         yaml = load(args.weights, map_location=device("cpu"))['model'].yaml
         patch_yolov5(yaml['chip'])
     else:
         # not running model, no chip enabled
+        patch_yolov5()
         return
     return yaml
 
@@ -40,7 +41,7 @@ def opt_override(module, args, yaml):
     # obtain image_shape from model yaml
     if hasattr(opt, 'image_shape'): opt.image_shape = yaml['image_shape']
     # if imgsz is not specified, overwrite with model's imgsz
-    if hasattr(opt, 'imgsz') and not args.imgsz:
+    if hasattr(opt, 'imgsz') and not args.imgsz and not args.weights.endswith(".tflite"):
         opt.imgsz = max(yaml['image_shape'])
     return opt
 

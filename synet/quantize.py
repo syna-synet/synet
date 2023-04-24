@@ -9,7 +9,7 @@ obtains arguments.
     parser = ArgumentParser()
     parser.add_argument("--cfg")
     parser.add_argument("--weights")
-    parser.add_argument("--image-shape")
+    parser.add_argument("--image-shape", nargs=2, type=int)
     parser.add_argument("--data")
     parser.add_argument("--number", "-n", default=500, type=int)
     return parser.parse_args()
