@@ -44,7 +44,7 @@ def opt_override(module, args, yaml):
         opt.image_shape = yaml['image_shape']
     # if imgsz is not specified, overwrite with model's imgsz
     if hasattr(opt, 'imgsz') and not args.imgsz \
-       and not (hasattr(args, "weights") and args.weights.endswith(".tflite")):
+       and not (args.weights is not None and args.weights.endswith(".tflite")):
         opt.imgsz = max(yaml['image_shape'])
     return opt
 
