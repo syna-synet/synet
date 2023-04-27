@@ -57,9 +57,13 @@ out_path.
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.inference_input_type = int8
     converter.inference_output_type = int8
-    # use our data
-    converter.representative_dataset = \
-        lambda: representative_data(data, image_shape, N)
+    # use our data if given
+    if data is None:
+        converter.representative_dataset = \
+            lambda: phony_data(image_shape)
+    else:
+        converter.representative_dataset = \
+            lambda: representative_data(data, image_shape, N)
     # quantize
     tflite_quant_model = converter.convert()
     # write out tflite
@@ -94,3 +98,9 @@ samples reshaped to image_shape.
         if im.shape[0] != image_shape[0] or im.shape[1] != image_shape[1]:
             im = resize(im, image_shape)
         yield [im.reshape((1, *image_shape, 1)).astype(float32) / 255]
+
+from numpy import float32
+from numpy.random import rand
+def phony_data(image_shape):
+    for _ in range(2):
+        yield [rand(1, *image_shape, 1).astype(float32)]
