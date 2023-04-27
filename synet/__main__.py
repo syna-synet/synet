@@ -6,6 +6,7 @@ def parse_opt():
     parser.add_argument("--cfg")
     parser.add_argument("--weights")
     parser.add_argument("--imgsz")
+    parser.add_argument("--image-shape", nargs=2, type=int)
     args = parser.parse_known_args()[0]
     # ensure argv can be parsed by downstream parser
     argv.remove(args.mode)
@@ -39,9 +40,11 @@ def opt_override(module, args, yaml):
     # apply possibly updated cfg
     if args.cfg: opt.cfg = args.cfg
     # obtain image_shape from model yaml
-    if hasattr(opt, 'image_shape'): opt.image_shape = yaml['image_shape']
+    if hasattr(opt, 'image_shape') and not args.image_shape:
+        opt.image_shape = yaml['image_shape']
     # if imgsz is not specified, overwrite with model's imgsz
-    if hasattr(opt, 'imgsz') and not args.imgsz and not args.weights.endswith(".tflite"):
+    if hasattr(opt, 'imgsz') and not args.imgsz \
+       and not args.weights.endswith(".tflite"):
         opt.imgsz = max(yaml['image_shape'])
     return opt
 
@@ -49,7 +52,7 @@ from importlib import import_module
 def main():
     args = parse_opt()
     # only try to grab use mode from synet if it exists.  Otherwise, use yolov5
-    src = 'synet' if args.mode in ('quantize', 'test', 'data_subset'
+    src = 'synet' if args.mode in ('quantize', 'test', 'data_subset', 'metrics'
                                    ) else 'yolov5'
     # select the mode
     module = import_module(f'{src}.{args.mode}')
