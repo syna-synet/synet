@@ -96,7 +96,12 @@ class Detect(Yolo_PTDetect):
                         )(x)
 
 
-from yolov5.val import Path, Callbacks, create_dataloader, select_device, DetectMultiBackend, check_img_size, LOGGER, check_dataset, torch, np, ConfusionMatrix, coco80_to_coco91_class, Profile, tqdm, non_max_suppression, scale_boxes, xywh2xyxy, output_to_target, ap_per_class, pd, increment_path, os, colorstr, TQDM_BAR_FORMAT, process_batch, plot_images
+from yolov5.val import (Path, Callbacks, create_dataloader,
+                        select_device, DetectMultiBackend, check_img_size, LOGGER,
+                        check_dataset, torch, np, ConfusionMatrix, coco80_to_coco91_class,
+                        Profile, tqdm, non_max_suppression, scale_boxes, xywh2xyxy,
+                        output_to_target, ap_per_class, pd, increment_path, os, colorstr,
+                        TQDM_BAR_FORMAT, process_batch, plot_images, save_one_txt)
 def val_run_tflite(
         data,
         weights=None,  # model.pt path(s)
