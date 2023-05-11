@@ -3,12 +3,12 @@
 from yolov5.models.yolo import Model
 from yolov5.utils.general import non_max_suppression
 from torch import load, no_grad, tensor
-def get_yolov5_model(model_path, input_shape=(640,480), low_thld=0,
-                     raw=False, **kwds):
+def get_yolov5_model(model_path, low_thld=0, raw=False, **kwds):
     if model_path.endswith(".yml") or model_path.endswith(".yaml"):
         assert raw
         return Model(model_path)
-    ckpt = load(model_path)['model']
+    ckpt = load(model_path)
+    ckpt = ckpt['model'] if isinstance(ckpt, dict) else ckpt
     raw_model = Model(ckpt.yaml)
     raw_model.load_state_dict(ckpt.state_dict())
     if raw:

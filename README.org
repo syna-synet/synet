@@ -171,25 +171,51 @@
 
 *** BYO Training Code
 
-    create custom_patches.py in synet from yolov5_patches.py.  In
-    train.py add:
+    In arbitrary traning code, you should be able to use synet like a
+    normal library:
 
-    from synet.custom_patches import patch_custom
-    patch_custom('katana')
+    from synet import get_model
+    model = get_model("/path/to/model.pt/or/model.yaml")
 
-    When specifying a model config, you can either point to a yaml
-    copied from this repository (see synet_pip/synet/zoo/*.yaml), or
-    you can change your model build call from
+    If the model is in our zoo (see synet/zoo/*.yaml), you can give
+    the model yaml name like:
 
-    Model(self.cfg or ..., ...)
+    model = get_model("katana-qvga.yaml")
 
-    to
+    For checkpoints, you can save the model directly, or in a
+    dictionary as the "model" entry:
 
-    Model(synet.zoo.find_model_path(self.cfg) or ..., ...)
+    from torch import save
+    save(model, "output/path")
+    # save({'model': model, **other_kwds}, "output/path")
 
-    In this second case, you will be able to specify a --cfg with a
-    yaml name like 'katana_kvga.yaml', and the yaml from the synet
-    repo will be used (backwards compatible, so is a safe change).
+    If you would like a model that includes NMS with a .4 confidence
+    threshold, create it with:
+
+    model = get_model("/path/to/model.pt", low_thld=.4, raw=False)
+
+**** From modified YOLOv5 code
+
+     If your training code is a fork of yolo, these steps may be more
+     appropriate.  Create custom_patches.py in synet from
+     yolov5_patches.py.  In train.py add:
+
+     from synet.custom_patches import patch_custom
+     patch_custom('katana')
+
+     When specifying a model config, you can either point to a yaml
+     copied from this repository (see synet_pip/synet/zoo/*.yaml), or
+     you can change your model build call from
+
+     Model(self.cfg or ..., ...)
+
+     to
+
+     Model(synet.zoo.find_model_path(self.cfg) or ..., ...)
+
+     In this second case, you will be able to specify a --cfg with a
+     yaml name like 'katana-kvga.yaml', and the yaml from the synet
+     repo will be used (backwards compatible, so is a safe change).
 
 ** Quantizing from Python
 
