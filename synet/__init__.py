@@ -1,3 +1,5 @@
+from base import as_keras
+
 from os.path import dirname, join, exists
 from .zoo import find_model_path
 def get_model(model_path, raw=True, **kwds):

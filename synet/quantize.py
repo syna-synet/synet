@@ -46,7 +46,7 @@ image shape image_shape, using only number samples.
     quantize(kmodel, data, image_shape, number, out)
 
 from tensorflow import lite, int8
-def quantize(kmodel, data, image_shape, N, out_path):
+def quantize(kmodel, data, image_shape, N=500, out_path=None):
     """Given a keras model, kmodel, and data yaml at data, quantize
 using N samples reshaped to image_shape and place the output model at
 out_path.
@@ -66,6 +66,7 @@ out_path.
             lambda: representative_data(data, image_shape, N)
     # quantize
     tflite_quant_model = converter.convert()
+    if out_path is None: return tflite_quant_model
     # write out tflite
     with open(out_path, "wb") as f:
         f.write(tflite_quant_model)
