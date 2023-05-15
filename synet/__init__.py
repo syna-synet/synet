@@ -1,4 +1,4 @@
-from base import as_keras
+from .base import askeras
 
 from os.path import dirname, join, exists
 from .zoo import find_model_path
