@@ -150,6 +150,10 @@ def val_run_tflite(
         device, pt, jit, engine = next(model.parameters()).device, True, False, False  # get model device, PyTorch model
         half &= device.type != 'cpu'  # half precision only supported on CUDA
         model.half() if half else model.float()
+
+        # SYNET MODIFICATION: never train tflite
+        tflite = False
+
     else:  # called directly
         device = select_device(device, batch_size=batch_size)
         half &= device.type != 'cpu' # half precision only supported on CUDA, dont remove!
