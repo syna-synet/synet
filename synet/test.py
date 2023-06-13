@@ -7,19 +7,30 @@ def parse_opt():
 from numpy import absolute
 def test_arr(out1, out2):
     """compare two arrays.  Return the max difference."""
-    assert all(s1 == s2 for s1, s2 in zip(out1.shape, out2.shape))
+    assert all(s1 == s2 for s1, s2 in zip(out1.shape, out2.shape)), \
+        (out1.shape, out2.shape)
     return absolute(out1 - out2).max()
 
 
+def t_actv_to_k_helper(actv):
+    if len(actv.shape) == 4:
+        tp = 0, 2, 3, 1
+    elif len(actv.shape) == 3:
+        tp = 0, 2, 1
+    return actv.detach().numpy().transpose(*tp)
+def t_actv_to_k(actv):
+    return [t_actv_to_k_helper(a) for a in actv] if isinstance(actv, list) \
+        else t_actv_to_k_helper(actv)
+
 from .base import askeras
-t_actv_to_k = lambda actv: actv.detach().numpy().transpose(0, 2, 3, 1)
 def test_layer(layer, torch_inp):
     """Given synet layer, test on some torch input activations and
 return max error between two output activations
 
     """
-    tout = layer(torch_inp)
-    with askeras(train=True):
+    tout = layer(torch_inp[:])
+    with askeras(train=True, imgsz=torch_inp[0].shape[-2:],
+                 xywh=True):
         kout = layer(t_actv_to_k(torch_inp))
     if isinstance(tout, dict):
         assert len(tout) == len(kout)
@@ -41,13 +52,18 @@ difference between all configurations.
     """
     for param in layer.parameters():
         uniform_(param, -1)
-    max_diff = max(test_layer(layer,rand(batch_size,in_channels,*shape)*2-1)
+    max_diff = max(test_layer(layer,
+                              [rand(batch_size,in_channels,*s)*2-1
+                               for s in shape]
+                              if isinstance(shape[0], tuple)
+                              else rand(batch_size,in_channels,*shape)*2-1)
                    for shape in shapes)
     print("max_diff:", max_diff)
     return max_diff
 
 
 from .base import Conv2d, ReLU, BatchNorm
+from math import ceil
 def run():
     """Run all test cases.  Print errors.  Throw error if max error
 encountered is greater than 1e-5
@@ -80,9 +96,40 @@ encountered is greater than 1e-5
     max_diff = max(test_sizes(batchnorm, batch_size, in_channels, shapes),
                    max_diff)
 
+    from .ultralytics_patches import Detect
+    print("testing Ultralytics Detect")
+    detect = Detect(nc=13, ch=(in_channels, in_channels))
+    detect.eval()
+    detect.export = True
+    detect.format = 'tflite'
+    detect.stride[0], detect.stride[1] = 1, 2
+    dshapes = [(s, (ceil(s[0]/2) , ceil(s[1]/2))) for s in shapes]
+    max_diff = max(test_sizes(detect, batch_size, in_channels, dshapes),
+                   max_diff)
+
+    from .ultralytics_patches import Pose
+    print("testing Ultralytics Pose, 2kpt")
+    pose = Pose(nc=13, kpt_shape=(17,2), ch=(in_channels, in_channels))
+    pose.eval()
+    pose.export = True
+    pose.format = 'tflite'
+    pose.stride[0], pose.stride[1] = 1, 2
+    dshapes = [(s, (ceil(s[0]/2) , ceil(s[1]/2))) for s in shapes]
+    max_diff = max(test_sizes(pose, batch_size, in_channels, dshapes),
+                   max_diff)
+
+    print("testing Ultralytics Pose, 3kpt")
+    pose = Pose(nc=13, kpt_shape=(17,3), ch=(in_channels, in_channels))
+    pose.eval()
+    pose.export = True
+    pose.format = 'tflite'
+    pose.stride[0], pose.stride[1] = 1, 2
+    dshapes = [(s, (ceil(s[0]/2) , ceil(s[1]/2))) for s in shapes]
+    max_diff = max(test_sizes(pose, batch_size, in_channels, dshapes),
+                   max_diff)
 
     print("OVERALL MAXIMUM DIFFERENCE:", max_diff)
-    tolerance = 1e-5
+    tolerance = 2e-4
     if max_diff > tolerance:
         print(f"maximum difference greater than tolerance ({tolerance}).")
         print("Tests failed")

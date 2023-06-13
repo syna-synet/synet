@@ -55,8 +55,6 @@ test.py.
                                  bias         = bias,
                                  stride       = stride)
         self.use_bias = bias
-        if self.use_bias:
-            self.bias = self.conv.bias
 
     def forward(self, x):
         if askeras.use_keras:
@@ -72,7 +70,7 @@ test.py.
         return self.conv(x)
 
     def as_keras(self, x):
-        assert x.shape[-1] == self.in_channels
+        assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
         conv = Keras_Conv2d(filters     = self.out_channels,
                             kernel_size = self.kernel_size,
                             strides     = self.stride,
@@ -84,6 +82,20 @@ test.py.
                          if self.use_bias else
                          [weight])
         return conv(x)
+
+    def requires_grad_(self, val):
+        self.conv = self.conv.requires_grad_(val)
+        return self
+
+    def __getattr__(self, name):
+        if name in ("bias", "weight"):
+            return getattr(self.conv, name)
+        return super().__getattr__(name)
+
+    def __setattr__(self, name, value):
+        if name in ("bias", "weight"):
+            return setattr(self.conv, name, value)
+        return super().__setattr__(name, value)
 
 
 from torch import mean
@@ -109,6 +121,8 @@ from keras.layers import Concatenate as Keras_Concatenate
 from torch import cat as torch_cat
 class Cat(Module):
     """Concatenate along feature dimension."""
+    def __init__(self, *args):
+        super().__init__()
     def forward(self, xs):
         if askeras.use_keras:
             return self.as_keras(xs)
@@ -174,5 +188,8 @@ class Sequential(Module):
         for layer in self.ml:
             x = layer(x)
         return x
+
+    def __getitem__(self, i):
+        return self.ml[i]
 
 

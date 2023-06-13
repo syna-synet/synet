@@ -11,6 +11,8 @@ obtains arguments.
     parser.add_argument("--weights")
     parser.add_argument("--image-shape", nargs=2, type=int)
     parser.add_argument("--data")
+    parser.add_argument("--kwds", nargs="+", default=[])
+    parser.add_argument("--channels", "-c", default=1, type=int)
     parser.add_argument("--number", "-n", default=500, type=int)
     return parser.parse_args()
 
@@ -19,18 +21,20 @@ from keras import Input, Model
 from torch import no_grad
 from .base import askeras
 from .yolov5_patches import get_yolov5_model
-def run(image_shape, weights, cfg, data, number):
+from . import get_model
+def run(image_shape, weights, cfg, data, number, channels, kwds):
     """Entrypoint to quantize.py.  Quantize the model specified by
 weights (falling back to cfg), using samples from the data yaml with
 image shape image_shape, using only number samples.
 
     """
     # obtain the pytorch model from weights or cfg, prioritizing weights
-    model = get_yolov5_model(weights or cfg, raw=True)
+    model = get_model(weights or cfg, raw=True)
 
     # generate keras model
-    inp = Input(image_shape+[1], batch_size=1)
-    with askeras(imgsz=image_shape), no_grad():
+    inp = Input(image_shape+[channels], batch_size=1)
+    with askeras(imgsz=image_shape, **dict(s.split("=") for s in kwds)), \
+         no_grad():
         kmodel = Model(inp, model(inp))
 
     # determine output file path
@@ -43,10 +47,10 @@ image shape image_shape, using only number samples.
         out = splitext(weights or cfg)[0]+".tflite"
 
     # quantize the model
-    quantize(kmodel, data, image_shape, number, out)
+    quantize(kmodel, data, image_shape, number, out, channels)
 
 from tensorflow import lite, int8
-def quantize(kmodel, data, image_shape, N=500, out_path=None):
+def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1):
     """Given a keras model, kmodel, and data yaml at data, quantize
 using N samples reshaped to image_shape and place the output model at
 out_path.
@@ -60,10 +64,10 @@ out_path.
     # use our data if given
     if data is None:
         converter.representative_dataset = \
-            lambda: phony_data(image_shape)
+            lambda: phony_data(image_shape, channels)
     else:
         converter.representative_dataset = \
-            lambda: representative_data(data, image_shape, N)
+            lambda: representative_data(data, image_shape, N, channels)
     # quantize
     tflite_quant_model = converter.convert()
     if out_path is None: return tflite_quant_model
@@ -77,7 +81,7 @@ from glob import glob
 from numpy import float32
 from os.path import isdir, join, isabs
 from random import shuffle
-def representative_data(data, image_shape, N):
+def representative_data(data, image_shape, N, channels):
     """Obtains dataset from data, samples N samples, and returns those
 samples reshaped to image_shape.
 
@@ -94,7 +98,8 @@ samples reshaped to image_shape.
     shuffle(f)
     for fpth in f[:N]:
         im = imread(fpth)
-        if im.shape[-1] != 1:
+        if im.shape[-1] != channels:
+            assert channels == 1
             im = im.mean(-1, keepdims=True)
         if im.shape[0] != image_shape[0] or im.shape[1] != image_shape[1]:
             im = resize(im, image_shape)
@@ -102,6 +107,6 @@ samples reshaped to image_shape.
 
 from numpy import float32
 from numpy.random import rand
-def phony_data(image_shape):
+def phony_data(image_shape, channels):
     for _ in range(2):
-        yield [rand(1, *image_shape, 1).astype(float32)]
+        yield [rand(1, *image_shape, channels).astype(float32)]

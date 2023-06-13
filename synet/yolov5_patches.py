@@ -424,3 +424,6 @@ def patch_yolov5(chip=None):
     # yolo uses uint8.  Change to int8
     common.np = SimpleNamespace(**vars(numpy))
     common.np.uint8 = common.np.int8
+
+    import synet
+    synet.get_model_backend = get_yolov5_model
