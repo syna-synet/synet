@@ -32,7 +32,6 @@ askeras = AsKeras()
 
 from torch.nn import Conv2d as Torch_Conv2d
 from torch.nn.functional import pad
-from keras.layers import Conv2D as Keras_Conv2d
 class Conv2d(Module):
     """Convolution operator which ensures padding is done equivalently
 between PyTorch and TensorFlow.  Currently, only supports kernel_size
@@ -71,6 +70,7 @@ test.py.
 
     def as_keras(self, x):
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
+        from keras.layers import Conv2D as Keras_Conv2d
         conv = Keras_Conv2d(filters     = self.out_channels,
                             kernel_size = self.kernel_size,
                             strides     = self.stride,
@@ -99,8 +99,6 @@ test.py.
 
 
 from torch import mean
-from tensorflow import expand_dims, reduce_mean
-from keras.layers import Lambda
 class Grayscale(Module):
     """Training frameworks often fix input channels to 3.  This
 grayscale layer can be added to the beginning of a model to convert to
@@ -116,8 +114,6 @@ channel.
         return x.mean(1, keepdims=True)
 
 
-
-from keras.layers import Concatenate as Keras_Concatenate
 from torch import cat as torch_cat
 class Cat(Module):
     """Concatenate along feature dimension."""
@@ -129,10 +125,10 @@ class Cat(Module):
         return torch_cat(xs, dim=1)
     def as_keras(self, xs):
         assert all(len(x.shape) == 4 for x in xs)
+        from keras.layers import Concatenate as Keras_Concatenate
         return Keras_Concatenate(-1)(xs)
 
 
-from keras.layers import ReLU as Keras_ReLU
 from torch.nn import ReLU as Torch_ReLU
 from torch import minimum, tensor
 class ReLU(Module):
@@ -149,11 +145,11 @@ class ReLU(Module):
         return minimum(self.relu(x), self.max_val)
 
     def as_keras(self, x):
+        from keras.layers import ReLU as Keras_ReLU
         return Keras_ReLU(self.max_val)(x)
 
 
 from torch.nn import BatchNorm2d as Torch_Batchnorm
-from keras.layers import BatchNormalization as Keras_Batchnorm
 class BatchNorm(Module):
     def __init__(self, features, epsilon=1e-3, momentum=0.999):
         super().__init__()
@@ -167,6 +163,7 @@ class BatchNorm(Module):
         return self.batchnorm(x)
 
     def as_keras(self, x):
+        from keras.layers import BatchNormalization as Keras_Batchnorm
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
         batchnorm.build(x.shape)

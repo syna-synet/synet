@@ -1,11 +1,9 @@
 from torch.nn import ModuleList
 from .base import askeras, Conv2d, ReLU
 from .layers import Sequential
-from tensorflow.keras.layers import Reshape
 
 
 from ultralytics.nn.modules.block import DFL as Torch_DFL
-from tensorflow.keras.layers import Softmax
 class DFL(Torch_DFL):
     def __init__(self, c1=16):
         super().__init__(c1)
@@ -18,14 +16,11 @@ class DFL(Torch_DFL):
         return super().forward(x)
     def as_keras(self, x):
         # b, ay, ax, c = x.shape
+        from tensorflow.keras.layers import Reshape, Softmax
         return Reshape((-1, 4)
                        )(self.conv(Softmax(-1)(Reshape((-1, 4, self.c1))(x))))
 
 from ultralytics.nn.modules.head import Detect as Torch_Detect
-from tensorflow import meshgrid, range, stack, reshape, concat
-from tensorflow.math import ceil
-from tensorflow.keras.layers import Concatenate
-from tensorflow.keras.activations import sigmoid
 class Detect(Torch_Detect):
     def __init__(self, nc=80, ch=(), junk=None):
         super().__init__(nc, ch)
@@ -49,6 +44,11 @@ class Detect(Torch_Detect):
             return Detect.as_keras(self, x)
         return super().forward(x)
     def as_keras(self, x):
+        from tensorflow.keras.layers import Reshape
+        from tensorflow import meshgrid, range, stack, reshape, concat
+        from tensorflow.math import ceil
+        from tensorflow.keras.layers import Concatenate
+        from tensorflow.keras.activations import sigmoid
         ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
@@ -75,7 +75,6 @@ class Detect(Torch_Detect):
 
 
 from ultralytics.nn.modules.head import Pose as Torch_Pose
-from tensorflow import constant
 class Pose(Torch_Pose, Detect):
     def __init__(self, nc, kpt_shape, ch, *args):
         super().__init__(nc, kpt_shape, ch)
@@ -94,9 +93,15 @@ class Pose(Torch_Pose, Detect):
         return super().forward(*args, **kwds)
     def s(self, stride):
         if self.kpt_shape[1] == 3:
+            from tensorflow import constant
             return constant([stride, stride, 1]*self.kpt_shape[0])
         return stride
     def as_keras(self, x):
+        from tensorflow.keras.layers import Reshape
+        from tensorflow import meshgrid, range, stack, reshape, concat
+        from tensorflow.math import ceil
+        from tensorflow.keras.layers import Concatenate
+        from tensorflow.keras.activations import sigmoid
         kpt = Concatenate(-3)([Reshape((-1,*self.kpt_shape))(cv(xi)
                                                              *self.s(s.item()))
                                for cv, xi, s in zip(self.cv4, x, self.stride)])
