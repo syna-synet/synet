@@ -1,9 +1,29 @@
+from types import SimpleNamespace
+from importlib import import_module
 
-"""Convenience function to load yolov5 model"""
-from yolov5.models.yolo import Model
-from yolov5.utils.general import non_max_suppression
+import numpy
+import tensorflow as tf
+from tensorflow.math import ceil
 from torch import load, no_grad, tensor
+from yolov5 import val
+from yolov5.models import yolo, common
+from yolov5.models.yolo import Detect as Yolo_PTDetect, Model
+from yolov5.models.tf import TFDetect as Yolo_TFDetect
+from yolov5.utils.general import non_max_suppression
+from yolov5.val import (Path, Callbacks, create_dataloader,
+                        select_device, DetectMultiBackend,
+                        check_img_size, LOGGER, check_dataset, torch,
+                        np, ConfusionMatrix, coco80_to_coco91_class,
+                        Profile, tqdm, scale_boxes, xywh2xyxy,
+                        output_to_target, ap_per_class, pd,
+                        increment_path, os, colorstr, TQDM_BAR_FORMAT,
+                        process_batch, plot_images, save_one_txt)
+
+from .base import askeras
+
+
 def get_yolov5_model(model_path, low_thld=0, raw=False, **kwds):
+    """Convenience function to load yolov5 model"""
     if model_path.endswith(".yml") or model_path.endswith(".yaml"):
         assert raw
         return Model(model_path)
@@ -14,23 +34,24 @@ def get_yolov5_model(model_path, low_thld=0, raw=False, **kwds):
     if raw:
         return raw_model
     raw_model.eval()
+
     def model(x):
         with no_grad():
-            xyxyoc = non_max_suppression(raw_model(tensor(x).unsqueeze(0).float()),
+            xyxyoc = non_max_suppression(raw_model(tensor(x)
+                                                   .unsqueeze(0).float()),
                                          conf_thres=low_thld,
                                          iou_thres=.3,
                                          multi_label=True
                                          )[0].numpy()
-            return xyxyoc[:,:4], xyxyoc[:,4:].prod(1)
+            return xyxyoc[:, :4], xyxyoc[:, 4:].prod(1)
     return model
 
 
-"""Modify Tensorflow Detect head to allow for arbitrary input shape
-(need not be multiple of 32)."""
-from yolov5.models.tf import TFDetect as Yolo_TFDetect
-import tensorflow as tf
-from tensorflow.math import ceil
 class TFDetect(Yolo_TFDetect):
+    """Modify Tensorflow Detect head to allow for arbitrary input
+    shape (need not be multiple of 32).
+
+    """
 
     # use orig __init__, but make nx, ny calculated via ceil div
     def __init__(self, nc=80, anchors=(), ch=(), imgsz=(640, 640), w=None):
@@ -55,7 +76,7 @@ class TFDetect(Yolo_TFDetect):
                 y = x[i]
                 grid = tf.transpose(self.grid[i], [0, 2, 1, 3]) - 0.5
                 anchor_grid = tf.transpose(self.anchor_grid[i], [0, 2, 1, 3])*4
-                xy = (tf.sigmoid(y[..., 0:2]) * 2 + grid) * self.stride[i]# xy
+                xy = (tf.sigmoid(y[..., 0:2]) * 2 + grid) * self.stride[i]
                 wh = tf.sigmoid(y[..., 2:4]) ** 2 * anchor_grid
                 # Normalize xywh to 0-1 to reduce calibration error
                 xy /= tf.constant([[self.imgsz[1], self.imgsz[0]]],
@@ -70,10 +91,8 @@ class TFDetect(Yolo_TFDetect):
             if self.training else (tf.concat(z, 1),)
 
 
-"""Make YOLOv5 Detect head compatible with synet tflite export"""
-from .base import askeras
-from yolov5.models.yolo import Detect as Yolo_PTDetect
 class Detect(Yolo_PTDetect):
+    """Make YOLOv5 Detect head compatible with synet tflite export"""
 
     def __init__(self, *args, **kwds):
         # to account for args hack.
@@ -96,12 +115,6 @@ class Detect(Yolo_PTDetect):
                         )(x)
 
 
-from yolov5.val import (Path, Callbacks, create_dataloader,
-                        select_device, DetectMultiBackend, check_img_size, LOGGER,
-                        check_dataset, torch, np, ConfusionMatrix, coco80_to_coco91_class,
-                        Profile, tqdm, non_max_suppression, scale_boxes, xywh2xyxy,
-                        output_to_target, ap_per_class, pd, increment_path, os, colorstr,
-                        TQDM_BAR_FORMAT, process_batch, plot_images, save_one_txt)
 def val_run_tflite(
         data,
         weights=None,  # model.pt path(s)
@@ -402,14 +415,8 @@ def val_run_tflite(
     return (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, map50s, t
 
 
-"""Apply modifications to YOLOv5 for synet"""
-from yolov5.models import yolo
-from importlib import import_module
-from yolov5 import val
-from yolov5.models import common
-from types import SimpleNamespace
-import numpy
 def patch_yolov5(chip=None):
+    """Apply modifications to YOLOv5 for synet"""
 
     # enable the  chip if given
     if chip is not None:

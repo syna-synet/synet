@@ -1,26 +1,34 @@
+from importlib import import_module
+
 from torch.nn import ModuleList
+from ultralytics import YOLO
+from ultralytics.nn import tasks
+from ultralytics.nn.modules.block import DFL as Torch_DFL
+from ultralytics.nn.modules.head import Pose as Torch_Pose, Detect as Torch_Detect
+
 from .base import askeras, Conv2d, ReLU
 from .layers import Sequential
 
 
-from ultralytics.nn.modules.block import DFL as Torch_DFL
 class DFL(Torch_DFL):
     def __init__(self, c1=16):
         super().__init__(c1)
         weight = self.conv.weight
         self.conv = Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
         self.conv.conv.weight.data[:] = weight.data
+
     def forward(self, x):
         if askeras.use_keras:
             return self.as_keras(x)
         return super().forward(x)
+
     def as_keras(self, x):
         # b, ay, ax, c = x.shape
         from tensorflow.keras.layers import Reshape, Softmax
         return Reshape((-1, 4)
                        )(self.conv(Softmax(-1)(Reshape((-1, 4, self.c1))(x))))
 
-from ultralytics.nn.modules.head import Detect as Torch_Detect
+
 class Detect(Torch_Detect):
     def __init__(self, nc=80, ch=(), junk=None):
         super().__init__(nc, ch)
@@ -39,10 +47,12 @@ class Detect(Torch_Detect):
                                           Conv2d(c3, self.nc, 1, bias=True)])
                               for x in ch)
         self.dfl = DFL()
+
     def forward(self, x):
         if askeras.use_keras:
             return Detect.as_keras(self, x)
         return super().forward(x)
+
     def as_keras(self, x):
         from tensorflow.keras.layers import Reshape
         from tensorflow import meshgrid, range, stack, reshape, concat
@@ -62,8 +72,8 @@ class Detect(Torch_Detect):
                                                         indexing="ij"))
                                               for s in self.stride)],
                          -2)
-        box1 = anchors - ltrb[...,:2]
-        box2 = anchors + ltrb[...,2:]
+        box1 = anchors - ltrb[..., :2]
+        box2 = anchors + ltrb[..., 2:]
         if askeras.kwds.get("xywh"):
             box1, box2 = (box1 + box2) / 2, box2 - box1
 
@@ -74,7 +84,6 @@ class Detect(Torch_Detect):
                                                          zip(self.cv3, x)]))])
 
 
-from ultralytics.nn.modules.head import Pose as Torch_Pose
 class Pose(Torch_Pose, Detect):
     def __init__(self, nc, kpt_shape, ch, *args):
         super().__init__(nc, kpt_shape, ch)
@@ -87,23 +96,26 @@ class Pose(Torch_Pose, Detect):
                                           ReLU(6),
                                           Conv2d(c4, self.nk, 1)))
                               for x in ch)
+
     def forward(self, *args, **kwds):
         if askeras.use_keras:
             return self.as_keras(*args, **kwds)
         return super().forward(*args, **kwds)
+
     def s(self, stride):
         if self.kpt_shape[1] == 3:
             from tensorflow import constant
             return constant([stride, stride, 1]*self.kpt_shape[0])
         return stride
+
     def as_keras(self, x):
         from tensorflow.keras.layers import Reshape
         from tensorflow import meshgrid, range, stack, reshape, concat
         from tensorflow.math import ceil
         from tensorflow.keras.layers import Concatenate
         from tensorflow.keras.activations import sigmoid
-        kpt = Concatenate(-3)([Reshape((-1,*self.kpt_shape))(cv(xi)
-                                                             *self.s(s.item()))
+        kpt = Concatenate(-3)([Reshape((-1, *self.kpt_shape))(cv(xi) *
+                                                              self.s(s.item()))
                                for cv, xi, s in zip(self.cv4, x, self.stride)])
         x = self.detect(self, x)
         H, W = askeras.kwds['imgsz']
@@ -116,21 +128,21 @@ class Pose(Torch_Pose, Detect):
                                                         indexing="ij"))
                                               for s in self.stride)],
                          -3)
-        kpt = Reshape((-1, self.nk))(Concatenate(-1)([kpt[...,:2]*2 + anchors,
-                                                      sigmoid(kpt[...,2:])]))
+        kpt = Reshape((-1, self.nk))(Concatenate(-1)([kpt[..., :2] * 2
+                                                      + anchors,
+                                                      sigmoid(kpt[..., 2:])]))
         return Concatenate(-1)([x, kpt])
 
 
-from ultralytics import YOLO
 def get_ultralytics_model(model_path, low_thld=0, raw=False, **kwds):
     if model_path.endswith(".yml") or model_path.endswith(".yaml"):
         assert raw
         return YOLO(model_path).model
     model = YOLO(model_path)
-    if raw: return model.model
+    if raw:
+        return model.model
 
-from ultralytics.nn import tasks
-from importlib import import_module
+
 def patch_ultralytics(chip=None):
 
     # enable the  chip if given
