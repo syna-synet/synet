@@ -20,7 +20,7 @@ from os.path import splitext, commonpath, dirname, abspath
 from keras import Input, Model
 from torch import no_grad
 from .base import askeras
-from .yolov5_patches import get_yolov5_model
+# from .yolov5_patches import get_yolov5_model
 from . import get_model
 def run(image_shape, weights, cfg, data, number, channels, kwds):
     """Entrypoint to quantize.py.  Quantize the model specified by
@@ -50,7 +50,8 @@ image shape image_shape, using only number samples.
     quantize(kmodel, data, image_shape, number, out, channels)
 
 from tensorflow import lite, int8
-def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1):
+def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1,
+             generator=None):
     """Given a keras model, kmodel, and data yaml at data, quantize
 using N samples reshaped to image_shape and place the output model at
 out_path.
@@ -61,8 +62,11 @@ out_path.
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.inference_input_type = int8
     converter.inference_output_type = int8
+
+    if generator:
+        converter.representative_dataset = generator
     # use our data if given
-    if data is None:
+    elif data is None:
         converter.representative_dataset = \
             lambda: phony_data(image_shape, channels)
     else:
@@ -75,7 +79,7 @@ out_path.
     with open(out_path, "wb") as f:
         f.write(tflite_quant_model)
 
-from yolov5.utils.general import check_dataset
+# from yolov5.utils.general import check_dataset
 from cv2 import imread, resize
 from glob import glob
 from numpy import float32
@@ -103,7 +107,7 @@ samples reshaped to image_shape.
             im = im.mean(-1, keepdims=True)
         if im.shape[0] != image_shape[0] or im.shape[1] != image_shape[1]:
             im = resize(im, image_shape)
-        yield [im.reshape((1, *image_shape, 1)).astype(float32) / 255]
+        yield [im.reshape((1, *image_shape, channels)).astype(float32) / 255]
 
 from numpy import float32
 from numpy.random import rand

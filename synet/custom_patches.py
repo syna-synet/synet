@@ -1,6 +1,6 @@
 from .base import askeras
 
-from models.tf import TFDetect as PC_TFDetect
+from object_detection.models.tf import TFDetect as PC_TFDetect
 from tensorflow.math import ceil
 import tensorflow as tf
 class TFDetect(PC_TFDetect):
@@ -36,7 +36,7 @@ class TFDetect(PC_TFDetect):
         return x if self.training else (tf.concat(z, 1), x)
 
 
-from models.yolo import Detect as PC_PTDetect
+from object_detection.models.yolo import Detect as PC_PTDetect
 class Detect(PC_PTDetect):
     def __init__(self, *args, **kwds):
         if len(args) == 4:
@@ -56,7 +56,7 @@ class Detect(PC_PTDetect):
                         w=self, **self.kwds
                         )(x)
 
-from models import yolo
+from object_detection.models import yolo
 from importlib import import_module
 def patch_custom(chip):
     # patch custom.models.yolo
