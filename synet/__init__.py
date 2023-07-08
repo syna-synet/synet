@@ -26,4 +26,3 @@ supported in legacy and yolov5 format."""
                        )(find_model_path(model_path), raw=raw, **kwds)
 
     return get_model_backend(find_model_path(model_path), raw=raw, **kwds)
-
