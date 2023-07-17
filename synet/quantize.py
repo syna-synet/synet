@@ -1,6 +1,26 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
+from os.path import splitext, commonpath, dirname, abspath
+from keras import Input, Model
+from torch import no_grad
+from .base import askeras
+from . import get_model
+from tensorflow import lite, int8
+from cv2 import imread, resize
+from glob import glob
+from numpy import float32
+from os.path import isdir, join, isabs
+from random import shuffle
+from numpy import float32
+from numpy.random import rand
+try:
+    from .yolov5_patches import get_yolov5_model
+    from yolov5.utils.general import check_dataset
+except ImportError:
+    pass
+
+
 def parse_opt():
     """parse_opt() is used to make it compatible with how yolov5
 obtains arguments.
@@ -16,12 +36,7 @@ obtains arguments.
     parser.add_argument("--number", "-n", default=500, type=int)
     return parser.parse_args()
 
-from os.path import splitext, commonpath, dirname, abspath
-from keras import Input, Model
-from torch import no_grad
-from .base import askeras
-# from .yolov5_patches import get_yolov5_model
-from . import get_model
+
 def run(image_shape, weights, cfg, data, number, channels, kwds):
     """Entrypoint to quantize.py.  Quantize the model specified by
 weights (falling back to cfg), using samples from the data yaml with
@@ -49,7 +64,7 @@ image shape image_shape, using only number samples.
     # quantize the model
     quantize(kmodel, data, image_shape, number, out, channels)
 
-from tensorflow import lite, int8
+
 def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1,
              generator=None):
     """Given a keras model, kmodel, and data yaml at data, quantize
@@ -79,12 +94,7 @@ out_path.
     with open(out_path, "wb") as f:
         f.write(tflite_quant_model)
 
-# from yolov5.utils.general import check_dataset
-from cv2 import imread, resize
-from glob import glob
-from numpy import float32
-from os.path import isdir, join, isabs
-from random import shuffle
+
 def representative_data(data, image_shape, N, channels):
     """Obtains dataset from data, samples N samples, and returns those
 samples reshaped to image_shape.
@@ -109,8 +119,7 @@ samples reshaped to image_shape.
             im = resize(im, image_shape)
         yield [im.reshape((1, *image_shape, channels)).astype(float32) / 255]
 
-from numpy import float32
-from numpy.random import rand
+
 def phony_data(image_shape, channels):
     for _ in range(2):
         yield [rand(1, *image_shape, channels).astype(float32)]
