@@ -101,9 +101,9 @@ class Detect(Torch_Detect):
 
 
 class Pose(Torch_Pose, Detect):
-    def __init__(self, nc, kpt_shape, ch, *args):
+    def __init__(self, nc, kpt_shape, ch, sm_split=None, junk=None):
         super().__init__(nc, kpt_shape, ch)
-        Detect.__init__(self, nc, ch)
+        Detect.__init__(self, nc, ch, sm_split)
         self.detect = Detect.forward
         c4 = max(ch[0] // 4, self.nk)
         self.cv4 = ModuleList(Sequential((Conv2d(x, c4, 3),
