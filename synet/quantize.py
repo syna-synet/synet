@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser
 from glob import glob
-from os.path import splitext, commonpath, dirname, abspath, isdir, join, isabs
+from os.path import abspath, commonpath, dirname, isabs, isdir, join, splitext
 from random import shuffle
 
 from cv2 import imread, resize
 from keras import Input, Model
 from numpy import float32
 from numpy.random import rand
-from tensorflow import lite, int8
+from tensorflow import int8, lite
 from torch import no_grad
 
 from . import get_model
