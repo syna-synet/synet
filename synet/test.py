@@ -105,14 +105,17 @@ encountered is greater than 1e-5
 
     from .ultralytics_patches import Detect
     print("testing Ultralytics Detect")
-    detect = Detect(nc=13, ch=(in_channels, in_channels))
-    detect.eval()
-    detect.export = True
-    detect.format = 'tflite'
-    detect.stride[0], detect.stride[1] = 1, 2
-    dshapes = [(s, (ceil(s[0]/2), ceil(s[1]/2))) for s in shapes]
-    max_diff = max(test_sizes(detect, batch_size, in_channels, dshapes),
-                   max_diff)
+    for sm_split in None, 1, 2:
+        print("sm_split:", sm_split)
+        detect = Detect(nc=13, ch=(in_channels, in_channels), sm_split=sm_split)
+        detect.eval()
+        detect.export = True
+        detect.format = 'tflite'
+        detect.stride[0], detect.stride[1] = 1, 2
+        # need to only test even sizes for sm_split = 2
+        dshapes = [((4, 4), (2, 2)), ((8, 8), (4, 4)), ((12, 12), (6, 6))]
+        max_diff = max(test_sizes(detect, batch_size, in_channels, dshapes),
+                       max_diff)
 
     from .ultralytics_patches import Pose
     print("testing Ultralytics Pose, 2kpt")

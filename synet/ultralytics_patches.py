@@ -11,11 +11,13 @@ from .layers import Sequential
 
 
 class DFL(Torch_DFL):
-    def __init__(self, c1=16):
+    def __init__(self, c1=16, sm_split=None):
         super().__init__(c1)
         weight = self.conv.weight
         self.conv = Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
         self.conv.conv.weight.data[:] = weight.data
+        if isinstance(sm_split, int):
+            self.sm_split = sm_split
 
     def forward(self, x):
         if askeras.use_keras:
@@ -25,12 +27,26 @@ class DFL(Torch_DFL):
     def as_keras(self, x):
         # b, ay, ax, c = x.shape
         from tensorflow.keras.layers import Reshape, Softmax
+        if hasattr(self, 'sm_split'):
+            from tensorflow.keras.layers import Concatenate
+            assert not (x.shape[0]*x.shape[1]*x.shape[2]) % self.sm_split
+            x = Reshape((self.sm_split, -1, 4, self.c1))(x)
+            # tensorflow really wants to be indented like this.  I relent...
+            return Reshape((-1, 4))(
+                self.conv(
+                    Concatenate(1)([
+                        Softmax(-1)(x[:, i])
+                        for i in range(x.shape[1])
+                    ])
+                )
+            )
+
         return Reshape((-1, 4)
                        )(self.conv(Softmax(-1)(Reshape((-1, 4, self.c1))(x))))
 
 
 class Detect(Torch_Detect):
-    def __init__(self, nc=80, ch=(), junk=None):
+    def __init__(self, nc=80, ch=(), sm_split=None, junk=None):
         super().__init__(nc, ch)
         c2, c3 = max((16, ch[0] // 4, self.reg_max * 4)), max(ch[0], self.nc)
         self.cv2 = ModuleList(Sequential([Conv2d(x, c2, 3, bias=True),
@@ -46,7 +62,7 @@ class Detect(Torch_Detect):
                                           ReLU(6),
                                           Conv2d(c3, self.nc, 1, bias=True)])
                               for x in ch)
-        self.dfl = DFL()
+        self.dfl = DFL(sm_split=sm_split)
 
     def forward(self, x):
         if askeras.use_keras:
@@ -141,6 +157,7 @@ def get_ultralytics_model(model_path, low_thld=0, raw=False, **kwds):
     model = YOLO(model_path)
     if raw:
         return model.model
+    return model
 
 
 def patch_ultralytics(chip=None):
