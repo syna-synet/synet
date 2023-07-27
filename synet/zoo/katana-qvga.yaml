@@ -15,16 +15,16 @@ backbone:
    [-1, 1, katana.Conv2d,           [1, 8, 3, 2]],        #  1      1
    [-1, 1, katana.BatchNorm,        [8]],                 #  2      1
    [-1, 1, katana.ReLU,             [6]],                 #  3 c1   1
-   [-1, 1, katana.InvertedResidual, [8, 4, 32, 2]],       #  4 c2   2 stride -> 2
-   [-1, 1, katana.InvertedResidual, [32, 3, 32, 2]],      #  5      4 stride -> 4
-   [-1, 2, katana.InvertedResidual, [32, 3]],             #  6     12
-   [-1, 2, katana.InvertedResidual, [32, 3]],             #  7 c3  20
-   [-1, 1, katana.InvertedResidual, [32, 3, 32, 2]],      #  8     24 stride -> 8
-   [-1, 1, katana.InvertedResidual, [32, 3]],             #  9     32
-   [-1, 1, katana.InvertedResidual, [32, 3]],             # 10 c4  40
-   [-1, 1, katana.InvertedResidual, [32, 3, 32, 2]],      # 11     48 stride -> 16
-   [-1, 1, katana.InvertedResidual, [32, 3]],             # 12     64
-   [-1, 1, katana.InvertedResidual, [32, 1.5]]]           # 13 c5  80
+   [-1, 1, katana.Conv2dInvertedResidual, [8, 4, 32, 2]],       #  4 c2   2 stride -> 2
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3, 32, 2]],      #  5      4 stride -> 4
+   [-1, 2, katana.Conv2dInvertedResidual, [32, 3]],             #  6     12
+   [-1, 2, katana.Conv2dInvertedResidual, [32, 3]],             #  7 c3  20
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3, 32, 2]],      #  8     24 stride -> 8
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3]],             #  9     32
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3]],             # 10 c4  40
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3, 32, 2]],      # 11     48 stride -> 16
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 3]],             # 12     64
+   [-1, 1, katana.Conv2dInvertedResidual, [32, 1.5]]]           # 13 c5  80
 
 # YOLOv5 v6.0 head
 head:
