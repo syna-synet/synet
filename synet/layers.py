@@ -12,10 +12,11 @@ from .base import (ReLU, BatchNorm, Conv2d, Module, Sequential,
 
 
 class Conv2dInvertedResidual(Module):
-    """Inverted Resudual blocks are the main building block of
-MobileNet.  It is stable and gives low peek memory before and after.
-Additionally, the computations are extremely efficient on our chips
-
+    """
+    Block of conv2D -> activation -> linear pointwise with residual concat.
+    Inspired by Inverted Residual blocks which are the main building block
+    of MobileNet.  It is stable and gives low peek memory before and after.
+    Additionally, the computations are extremely efficient on our chips
     """
     def __init__(self, in_channels, expansion_factor,
                  out_channels=None, stride=1):
@@ -105,7 +106,7 @@ class DepthwiseSeparableConv2D(Module):
 
 
 class DepthwiseInvertedResidual(Conv2dInvertedResidual):
-    """Inverted Resudual blocks are the main building block of
+    """Classic Inverted Residual blocks are the main building block of
         MobileNet.  It is stable and gives low peek memory before and after.
         Additionally, the computations are extremely efficient on our chips
 
@@ -149,6 +150,8 @@ class DepthwiseInvertedResidual(Conv2dInvertedResidual):
 class DepthwiseSeparableInvertedResidual(Conv2dInvertedResidual):
     """
     Kind of efficient (in aspect of work memory) InvertedResidual block.
+    Same as "Conv2dInvertedResidual" but with depthwise separable instead of
+    Conv2D
     """
 
     def __init__(self, in_channels, expansion_factor,
