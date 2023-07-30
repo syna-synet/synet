@@ -10,10 +10,12 @@ layers.py, and [chip].py:
 """
 import keras
 from typing import Tuple, Union, Optional
-from torch.nn import Module
-from torch.nn import Conv2d as Torch_Conv2d
-from torch.nn.functional import pad
 from keras.layers import Conv2D as Keras_Conv2d
+from torch import cat as torch_cat, minimum, tensor
+from torch.nn import (Conv2d as Torch_Conv2d, BatchNorm2d as
+                      Torch_Batchnorm, Module, ModuleList as
+                      Torch_Modulelist, ReLU as Torch_ReLU)
+from torch.nn.functional import pad
 
 
 class AsKeras:
@@ -21,16 +23,22 @@ class AsKeras:
 keras.  See test.py and quantize.py for examples.
 
     """
+
     def __init__(self):
         self.use_keras = False
         self.kwds = dict(train=False)
+
     def __call__(self, **kwds):
         self.kwds.update(kwds)
         return self
+
     def __enter__(self):
         self.use_keras = True
+
     def __exit__(self, exc_type, exc_value, exc_traceback):
         self.__init__()
+
+
 askeras = AsKeras()
 
 
@@ -62,7 +70,10 @@ test.py.
         :param groups: using for pointwise/depthwise
         """
         super().__init__()
-        assert (kernel_size, stride) in [(1, 1), (3, 1), (3, 2)]
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+        # assert (kernel_size, stride) in [(1, 1), (3, 1), (3, 2)] \
+        #     or not (kernel_size % 2)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -81,14 +92,19 @@ test.py.
         if askeras.use_keras:
             return self.as_keras(x)
 
-        # make padding like in tensorflow, which right aligns convolutions.
-        if self.kernel_size == 3 and self.padding:
-            if self.stride == 1:
-                x = pad(x, (1,1,1,1))
-            elif self.stride == 2:
-                x = pad(x, (x.shape[-1]%2, 1, x.shape[-2]%2, 1))
+        if not self.padding:
+            return self.conv(x)
 
-        return self.conv(x)
+        # make padding like in tensorflow, which right aligns convolutions.
+        # radius of the kernel and carry.  Border size + carry.  All in y
+        ry, rcy = divmod(self.kernel_size[0] - 1, 2)
+        by, bcy = divmod((x.shape[-2] - 1) % self.stride - rcy, 2)
+        # radius of the kernel and carry.  Border size + carry.  All in x
+        rx, rcx = divmod(self.kernel_size[1] - 1, 2)
+        bx, bcx = divmod((x.shape[-1] - 1) % self.stride - rcx, 2)
+        # apply pad
+        return self.conv(
+            pad(x, (rx - bx - bcx, rx - bx, ry - by - bcy, ry - by)))
 
     def as_keras(self, x):
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
@@ -147,33 +163,35 @@ channels, but the tensorflow (tflite) model expects exactly one input
 channel.
 
     """
+
     def forward(self, x):
         if askeras.use_keras:
             return x
         return x.mean(1, keepdims=True)
 
 
-from torch import cat as torch_cat
 class Cat(Module):
     """Concatenate along feature dimension."""
+
     def __init__(self, *args):
         super().__init__()
+
     def forward(self, xs):
         if askeras.use_keras:
             return self.as_keras(xs)
         return torch_cat(xs, dim=1)
+
     def as_keras(self, xs):
         assert all(len(x.shape) == 4 for x in xs)
         from keras.layers import Concatenate as Keras_Concatenate
         return Keras_Concatenate(-1)(xs)
 
 
-from torch.nn import ReLU as Torch_ReLU
-from torch import minimum, tensor
 class ReLU(Module):
     def __init__(self, max_val=None):
         super().__init__()
-        self.max_val = None if max_val is None else tensor(max_val,dtype=float)
+        self.max_val = None if max_val is None else tensor(max_val,
+                                                           dtype=float)
         self.relu = Torch_ReLU()
 
     def forward(self, x):
@@ -188,7 +206,6 @@ class ReLU(Module):
         return Keras_ReLU(self.max_val)(x)
 
 
-from torch.nn import BatchNorm2d as Torch_Batchnorm
 class BatchNorm(Module):
     def __init__(self, features, epsilon=1e-3, momentum=0.999):
         super().__init__()
@@ -206,15 +223,14 @@ class BatchNorm(Module):
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
         batchnorm.build(x.shape)
-        weights      = self.batchnorm.weight.detach().numpy()
-        bias         = self.batchnorm.bias.detach().numpy()
+        weights = self.batchnorm.weight.detach().numpy()
+        bias = self.batchnorm.bias.detach().numpy()
         running_mean = self.batchnorm.running_mean.detach().numpy()
-        running_var  = self.batchnorm.running_var.detach().numpy()
+        running_var = self.batchnorm.running_var.detach().numpy()
         batchnorm.set_weights([weights, bias, running_mean, running_var])
         return batchnorm(x, training=askeras.kwds["train"])
 
 
-from torch.nn import ModuleList as Torch_Modulelist
 class Sequential(Module):
     def __init__(self, sequence):
         super().__init__()
@@ -227,5 +243,3 @@ class Sequential(Module):
 
     def __getitem__(self, i):
         return self.ml[i]
-
-
