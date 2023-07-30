@@ -93,9 +93,8 @@ class DepthwiseSeparableConv2D(Module):
         """
         super().__init__()
         self.depthwise = DepthwiseConv2d(
-            in_channels, in_channels, kernel_size=kernel_size, stride=stride,
-            groups=in_channels, bias=False,
-            padding=padding)
+            channels=in_channels, kernel_size=kernel_size, stride=stride,
+            bias=False, padding=padding)
         self.pointwise = Conv2d(in_channels, out_channels,
                                 kernel_size=1, bias=bias)
 
@@ -130,7 +129,7 @@ class DepthwiseInvertedResidual(Conv2dInvertedResidual):
             in_channels=in_channels, out_channels=hidden, kernel_size=1,
             padding=False)
         depthwise = DepthwiseConv2d(
-            hidden, hidden, kernel_size=3, groups=hidden, bias=False)
+            channels=hidden, kernel_size=3, bias=False)
         pointwise_squeeze = Conv2d(
             in_channels=hidden, out_channels=out_channels, kernel_size=1,
             padding=False)

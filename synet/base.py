@@ -138,6 +138,29 @@ test.py.
 
 
 class DepthwiseConv2d(Conv2d):
+    """
+    Depth-wise Conv2D using pytorch and supports as_keras
+    """
+    def __init__(self, channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: int = 1,
+                 bias: bool = False,
+                 padding: Optional[bool] = True):
+        """
+        :param channels: channels in/out/groups
+        :param kernel_size:
+        :param stride:
+        :param bias:
+        :param padding:
+        """
+        super().__init__(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=kernel_size,
+            stride=stride, bias=bias,
+            padding=padding, groups=channels
+        )
+
     def as_keras(self, x):
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
         padding_param = 'same' if self.padding else 'valid'
@@ -150,7 +173,6 @@ class DepthwiseConv2d(Conv2d):
             kernel_initializer=keras.initializers.Constant(
                 self.conv.weight.permute(2, 3, 1, 0).numpy())
         )
-
         return depthwise(x)
 
 
