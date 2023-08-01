@@ -29,13 +29,13 @@ class DFL(Torch_DFL):
         from tensorflow.keras.layers import Reshape, Softmax
         if hasattr(self, 'sm_split'):
             from tensorflow.keras.layers import Concatenate
-            assert not (x.shape[0]*x.shape[1]*x.shape[2]) % self.sm_split
-            x = Reshape((self.sm_split, -1, 4, self.c1))(x)
+            assert not (x.shape[0]*x.shape[1]*x.shape[2]*4) % self.sm_split
+            x = Reshape((self.sm_split, -1, self.c1))(x)
             # tensorflow really wants to be indented like this.  I relent...
             return Reshape((-1, 4))(
                 self.conv(
                     Concatenate(1)([
-                        Softmax(-1)(x[:, i])
+                        Softmax(-1)(x[:, i:i+1])
                         for i in range(x.shape[1])
                     ])
                 )
