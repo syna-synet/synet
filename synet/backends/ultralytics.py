@@ -1,4 +1,7 @@
 from importlib import import_module
+from os.path import dirname, join, isfile, basename
+from shutil import copy
+from sys import argv
 
 from torch.nn import ModuleList
 from ultralytics import YOLO
@@ -6,8 +9,10 @@ from ultralytics.nn import tasks
 from ultralytics.nn.modules.block import DFL as Torch_DFL
 from ultralytics.nn.modules.head import Pose as Torch_Pose, Detect as Torch_Detect
 
-from .base import askeras, Conv2d, ReLU
-from .layers import Sequential
+from . import Backend as BaseBackend
+from ..base import askeras, Conv2d, ReLU
+from ..layers import Sequential
+from ..zoo import in_zoo, get_config
 
 
 class DFL(Torch_DFL):
@@ -94,11 +99,6 @@ class Detect(Torch_Detect):
         if askeras.kwds.get("xywh"):
             box1, box2 = (box1 + box2) / 2, box2 - box1
 
-        return Concatenate(-1)([box1, box2,
-                                sigmoid(Concatenate(-2)([Reshape((-1, self.nc)
-                                                                 )(cv3(xi))
-                                                         for cv3, xi in
-                                                         zip(self.cv3, x)]))])
         out = [box1, box2, sigmoid(Concatenate(-2)([Reshape((-1, self.nc)
                                                             )(cv3(xi))
                                                     for cv3, xi in
@@ -157,6 +157,34 @@ class Pose(Torch_Pose, Detect):
                                                       + anchors,
                                                       sigmoid(kpt[..., 2:])]))
         return Concatenate(-1)([x, kpt])
+        return [*x,
+                                Reshape((-1, self.nk * 2 // 3))(kpt[..., :2] * 2
+                                                                ), #+ anchors),
+                                Reshape((-1, self.nk     // 3))(sigmoid(kpt[..., 2:]))]
+
+
+class Backend(BaseBackend):
+    def get_model(self, model_path, full=False):
+        if not isfile(model_path):
+            model_path = join(dirname(__file__), "..", "zoo", "ultralytics",
+                              model_path)
+            
+        if full:
+            return YOLO(model_path)
+        return YOLO(model_path).model
+    def get_shape(self, model):
+        if isinstance(model, str):
+            model = self.get_model(model)
+        return model.yaml["image_shape"]
+    def patch(self):
+        module = import_module(f"...layers", __name__)
+        for name in dir(module):
+            if name[0] != "_":
+                print("adding name", name)
+                setattr(tasks, name, getattr(module, name))
+        tasks.Concat = module.Cat
+        tasks.Detect = Detect
+        tasks.Pose = Pose
 
 
 def get_ultralytics_model(model_path, low_thld=0, raw=False, **kwds):
@@ -178,9 +206,53 @@ def patch_ultralytics(chip=None):
             if name[0] != "_":
                 setattr(tasks, name, getattr(module, name))
         tasks.Concat = module.Cat
+    elif chip == "":
+        module = import_module(f"..layers", __name__)
+        for name in dir(module):
+            if name[0] != "_":
+                setattr(tasks, name, getattr(module, name))
+        tasks.Concat = module.Cat
+        
 
     tasks.Detect = Detect
     tasks.Pose = Pose
 
     import synet
     synet.get_model_backend = get_ultralytics_model
+
+
+from torch import load, device
+def get_yaml_from_pt(pt):
+    return load(pt, map_location=device("cpu"))['model'].yaml
+
+
+def main():
+
+    backend = Backend()
+
+    # add synet ml modules to ultralytics
+    backend.patch()
+
+    # copy model from zoo if necessary
+    for val in argv[1:]:
+        if val.startswith("model="):
+            model = val.split("=")[1]
+            if in_zoo(model, "ultralytics"):
+                src, model = get_config(model, "ultralytics"), basename(model)
+                copy(src, model)
+                argv.remove(val)
+                argv.append("model="+model)
+            break
+    else:
+        raise ValueError("no model specified")
+
+    # add imgsz if not explicitly given
+    for val in argv[1:]:
+        if val.startswith("imgsz="):
+            break
+    else:
+        argv.append(f"imgsz={max(backend.get_shape(model))}")
+
+    # launch ultralytics
+    from ultralytics.yolo.cfg import entrypoint
+    entrypoint()
