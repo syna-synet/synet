@@ -157,10 +157,6 @@ class Pose(Torch_Pose, Detect):
                                                       + anchors,
                                                       sigmoid(kpt[..., 2:])]))
         return Concatenate(-1)([*x, kpt])
-        return [*x,
-                                Reshape((-1, self.nk * 2 // 3))(kpt[..., :2] * 2
-                                                                ), #+ anchors),
-                                Reshape((-1, self.nk     // 3))(sigmoid(kpt[..., 2:]))]
 
 
 class Backend(BaseBackend):
