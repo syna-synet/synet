@@ -1,17 +1,23 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser
+from copy import deepcopy
 from math import ceil
+from os import environ
+from sys import argv
 
 from numpy import absolute
-from torch import rand
+from torch import rand, no_grad
 from torch.nn.init import uniform_
 
-from .base import askeras, Conv2d, ReLU, BatchNorm
+from synet.base import askeras, Conv2d, ReLU, BatchNorm
+from synet.__main__ import main as synet_main
 
 
 def parse_opt():
     """dummy parse_opt entry func"""
-    return ArgumentParser().parse_args()
+    parser = ArgumentParser()
+    parser.add_argument("mode", nargs="?", default='all')
+    return parser.parse_args()
 
 
 def test_arr(out1, out2):
@@ -75,7 +81,7 @@ difference between all configurations.
     return max_diff
 
 
-def run():
+def run_tf():
     """Run all test cases.  Print errors.  Throw error if max error
 encountered is greater than 1e-5
 
@@ -107,7 +113,7 @@ encountered is greater than 1e-5
     max_diff = max(test_sizes(batchnorm, batch_size, in_channels, shapes),
                    max_diff)
 
-    from .ultralytics_patches import Detect
+    from .backends.ultralytics import Detect
     print("testing Ultralytics Detect")
     for sm_split in None, 1, 2:
         print("sm_split:", sm_split)
@@ -121,7 +127,7 @@ encountered is greater than 1e-5
         max_diff = max(test_sizes(detect, batch_size, in_channels, dshapes),
                        max_diff)
 
-    from .ultralytics_patches import Pose
+    from .backends.ultralytics import Pose
     print("testing Ultralytics Pose, 2kpt")
     pose = Pose(nc=13, kpt_shape=(17, 2), ch=(in_channels, in_channels))
     pose.eval()
@@ -147,6 +153,105 @@ encountered is greater than 1e-5
     if max_diff > tolerance:
         print(f"maximum difference greater than tolerance ({tolerance}).")
         print("Tests failed")
-        exit(1)
+        return 1
     print(f"maximum difference less than tolerance ({tolerance}).")
     print("Tests passed.")
+    return 0
+
+
+def test_nni_layer(float_model, quant_model, batch, in_channels, shapes):
+    with no_grad():
+        return max(test_arr(float_model(inp), quant_model(inp))
+                   for inp in (rand(batch, in_channels, *shape)*2-1
+                               for shape in shapes))
+
+
+def run_nni():
+    batch = 2
+    in_channels = 5
+    out_channels = 7
+    shapes = [(i, i) for i in range(5, 10)]
+    max_diff = -1
+
+    print("testing conv with naive quant")
+    from nni.algorithms.compression.pytorch.quantization import NaiveQuantizer
+    conv = Conv2d(in_channels, out_channels, 3, stride=2)
+    init(conv)
+    conv2 = deepcopy(conv)
+    quant_conf = [{"quant_types": ['weight'],
+                   'quant_bits': 8,
+                   "op_types": ["Conv2d"]}]
+    quantizer = NaiveQuantizer(conv2, quant_conf)
+    quantizer.compress()
+    max_diff = max(test_nni_layer(conv, conv2, batch, in_channels, shapes),
+                   max_diff)
+    print(f"maximum difference {max_diff}.")
+
+    print("testing conv with LSQ quant")
+    from nni.algorithms.compression.pytorch.quantization import QAT_Quantizer
+    from torch.optim import SGD
+
+    config_list = [{'quant_types': ['input', 'output', 'weight'],
+                    'quant_bits': {'input': 8, 'weight': 8, 'output': 8},
+                    'op_types': ['Conv2d']}]
+
+    for stride in (1, 2):
+        conv = Conv2d(in_channels, out_channels, 3, stride=stride)
+        conv2 = deepcopy(conv)
+        optim = SGD(conv2.parameters(), 1e-2)
+        print('quantizing...')
+        quantizer = QAT_Quantizer(conv2, config_list, optim,
+                                  rand(batch, in_channels, 8, 7)*2-1)
+        quantizer.compress()
+        print("Quantized!!")
+
+    print("quantizing ultralytics model with QAT...")
+    from synet import get_model
+    from synet.ultralytics_patches import patch_ultralytics
+    patch_ultralytics("sabre")
+    model = get_model('/mnt/bpd_architecture/zaccy/models/synet/svga3-5.1/skp2_vga/weights/best.pt', raw=False)
+    # get rid of head
+    model.model.model = model.model.model
+    optim = SGD(model.model.parameters(), 1e-2)
+    config_list = [{'quant_types': [],  # 'weight', 'input', 'output'],
+                    'quant_bits': {},  # 'weight': 8, 'input': 8, 'output': 8},
+                    'op_types': ['Conv2d']}]
+    model.model.train()
+    quantizer = QAT_Quantizer(model.model, config_list, optim,
+                              rand(batch, 3, 64, 64)*2-1)
+    quantizer.compress()
+    print("quantized!!")
+
+
+def run_quantize():
+    print("running quantize on skp2.yaml with ultralytics backend")
+    environ["CUDA_VISIBLE_DEVICES"] = ''
+    argv[1:] = ["quantize", "--backend", "ultralytics", "--cfg", "sabre-keypoint-qvga.yaml"]
+    synet_main()
+    return 0
+
+def run_ultralytics():
+    environ["CUDA_VISIBLE_DEVICES"] = ''
+    argv[1:] = ["ultralytics", "train", "model=sabre-keypoint-qvga.yaml", "data=coco-pose.yaml"]
+    synet_main()
+    return 0
+
+tests = {
+    "tf": run_tf,
+    #"nni": run_nni,
+    "quantize": run_quantize,
+    #"ultralytics": run_ultralytics,
+}
+
+
+def run(mode):
+    if mode == "all":
+        ret = False
+        for run_test in tests.values():
+            ret |= run_test()
+        exit(ret)
+    else:
+        exit(tests[mode]())
+
+def main():
+    run(**vars(parse_opt()))

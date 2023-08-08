@@ -28,7 +28,7 @@ obtains arguments.
     parser.add_argument("--image-shape", nargs=2, type=int)
     parser.add_argument("--data")
     parser.add_argument("--kwds", nargs="+", default=[])
-    parser.add_argument("--channels", "-c", default=1, type=int)
+    parser.add_argument("--channels", "-c", default=3, type=int)
     parser.add_argument("--number", "-n", default=500, type=int)
     return parser.parse_args()
 
@@ -39,6 +39,8 @@ weights (falling back to cfg), using samples from the data yaml with
 image shape image_shape, using only number samples.
 
     """
+    backend.patch()
+
     # obtain the pytorch model from weights or cfg, prioritizing weights
     model = backend.get_model(weights or cfg)
 

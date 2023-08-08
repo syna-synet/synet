@@ -79,7 +79,7 @@
    For instance, if you want to train a person keypoint model, you can
    train a qVGA (320x240) model for the sabre chip with
 
-   synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pase.yaml
+   synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pose.yaml
 
    This will put all output at ./runs/train/exp.  See name project and
    exists-ok in the Ultralytics docs for changing this.  The above
@@ -121,7 +121,7 @@
    will create a tflite at ./exp/weights/best.tflite.  You may also
    specify a model yaml like so:
 
-   synet quantize --cfg sabre-keypoint-qvga.yaml
+   synet quantize --backend ultralytics --cfg sabre-keypoint-qvga.yaml
 
    This will place a quantized model at ./model.tflite.  This will let
    you inspect the architecture, though it will not be a trained model,
@@ -131,7 +131,22 @@
 
 * Python API
 
-  SyNet 
+  SyNet exists to be the glue between State of the Art training, and
+  our chips.  Each model component knows how to "export itself" to a
+  keras/tensorflow model.  This done approximately like so:
+
+  from keras import Input, Model
+  from synet.base import askeras
+  inp = Input(...)
+  with askeras:
+      kmodel = Model(inp, model(inp))
+
+  (For a more complex example, see quantize.py.)
+
+  So long as only SyNet components actually operate on the model
+  input, this method will work.  SyNet integrates with other libraries
+  as much as possible, but can be used stand-alone in other python
+  project as a library itself.
 
 ** Creating Custom Model Architectures
 
@@ -186,32 +201,6 @@
     (background samples pruned randomly).  If every sample should have
     at least one label, then set --max-bg-ratio to 0 (not
     recommended).
-
-*** BYO Pytorch Training Code
-
-    In arbitrary traning code, you should be able to use SyNet like a
-    normal library:
-
-    from synet import get_model
-    model = get_model("/path/to/model.pt/or/model.yaml")
-
-    If the model is in our zoo (see synet/zoo/**.yaml), you can give
-    the model yaml name like:
-
-    model = get_model("katana-qvga.yaml")
-
-    For checkpoints, you can save the model directly, or in a
-    dictionary as the "model" entry:
-
-    from torch import save
-    save(model, "output/path")
-    # save({'model': model, **other_kwds}, "output/path")
-
-    If your training requires a keras model, see the [[Converting to
-    Keras]] section below.  If you would like a model that includes NMS
-    with a .4 confidence threshold, create it with:
-
-    model = get_model("/path/to/model.pt", low_thld=.4, raw=False)
 
 *** From modified YOLOv5 code
 

@@ -156,7 +156,7 @@ class Pose(Torch_Pose, Detect):
         kpt = Reshape((-1, self.nk))(Concatenate(-1)([kpt[..., :2] * 2
                                                       + anchors,
                                                       sigmoid(kpt[..., 2:])]))
-        return Concatenate(-1)([x, kpt])
+        return Concatenate(-1)([*x, kpt])
         return [*x,
                                 Reshape((-1, self.nk * 2 // 3))(kpt[..., :2] * 2
                                                                 ), #+ anchors),
@@ -180,7 +180,6 @@ class Backend(BaseBackend):
         module = import_module(f"...layers", __name__)
         for name in dir(module):
             if name[0] != "_":
-                print("adding name", name)
                 setattr(tasks, name, getattr(module, name))
         tasks.Concat = module.Cat
         tasks.Detect = Detect
