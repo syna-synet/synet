@@ -54,13 +54,17 @@ return max error between two output activations
     return test_arr(t_actv_to_k(tout), kout)
 
 
+def init(module):
+    for param in module.parameters():
+        uniform_(param, -1)
+
+
 def test_sizes(layer, batch_size, in_channels, shapes):
     """Run test_layer on a set of random input shapes.  Prints the max
 difference between all configurations.
 
     """
-    for param in layer.parameters():
-        uniform_(param, -1)
+    init(layer)
     max_diff = max(test_layer(layer,
                               [rand(batch_size, in_channels, *s)*2-1
                                for s in shape]

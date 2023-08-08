@@ -1,8 +1,8 @@
 * Introduction
 
-  The synet repository is a library for developing networks for
-  Synaptics vision chips.  It mainly consists of model component
-  definitions organized like so:
+  The SyNet repository is a library for developing networks for
+  Synaptics vision (and eventually maybe other) chips.  It mainly
+  consists of model component definitions organized like so:
 
   - synet.base
     - low-level network components
@@ -17,20 +17,21 @@
 
   - Models built from components in synet.[chip] are guaranteed to run
     on [chip], provided memory constraints are kept (see [[Profiling]]).
-  - When (building, exporting, profiling, not sure yet), synet can
+  - When (building, exporting, profiling, not sure yet), SyNet can
     produce profiling information and flag some inefficiencies.
-  - Models built from synet and quantized via synet will have only the
-    desired components, and will utilize the same padding heuristics.
+  - Models built from SyNet and quantized via SyNet will have only the
+    desired components, and will utilize the same padding heuristics
+    in inference as in training.
 
-  In addition to model components, synet also offers a thin wrapper
+  In addition to model components, SyNet also offers a thin wrapper
   around YOLOv5 training which allows you to run YOLOv5 with models defined
-  exclusively with synet layers.  Any top-level YOLOv5 function
-  (train, detect, val, etc.) will run through synet.  The basic syntax
+  exclusively with SyNet layers.  Any top-level YOLOv5 function
+  (train, detect, val, etc.) will run through SyNet.  The basic syntax
   is:
 
   synet [YOLOv5 MODULE] [YOLOv5 ARGS]...
 
-  However, you should use synet's quantize instead of YOLOv5's export
+  However, you should use SyNet's quantize instead of YOLOv5's export
   to convert to a int8 tflite model for deployment (see [[Quantize]]).  We
   give some examples/explanations for basic YOLOv5 usage here, but for
   any further questions about YOLOv5, you should consult the YOLOv5
@@ -52,68 +53,85 @@
   where '-e' will allow you to make edits to your local clone after
   install.
 
-* Train
+* Shell API
 
-  The synet repository provides a thin wrapper around YOLOv5 training
-  for simple training situations.  The basic usage is
+  The basic syntax for running SyNet from a shell is:
 
-  synet train [YOLOv5 ARGS]
+  synet [entrypoint] [entrypoint specific args]
 
-  For instance, if you have a custom dataset prepared in the YOLO
-  format, you can train a qVGA (320x240) model for the katana chip
-  with
+  Where entrypoint can be a native SyNet module, or a backend like
+  ultralytics.  For instance:
 
-  synet train --cfg katana-qvga.yaml --data /PATH/TO/CUSTOM_DATASET.YAML
+  synet ultralytics train ...
+  synet quantize --backend ultralytics ...
 
-  This will put all output at ./runs/train/exp.  See --name --project
-  and --exists-ok in the YOLOv5 docs for changing this.  Similarly, if
-  you would like to train a VGA (480x640) model (for instance, for
-  data with much smaller objects), you could run
+  Notice that while some backends are callable this way, the backend
+  may also need to be specified for other modules.  For instance,
+  synet.quantize needs to know with which backend to the model.
+  
+** Train
 
-  synet train --cfg katana-vga.yaml --data /PATH/TO/CUSTOM_DATASET.YAML
+   The SyNet repository provides a thin wrapper around Ultralytics
+   training for simple training situations.  The basic usage is
 
-  This will place the best weights at runs/train/exp/weights/best.pt.
-  Because Katana has only been used with grayscale cameras, the first
-  layer converts to grayscale (not included in tflite export), so your
-  dataset can contain a mix of grayscale and color images which get
-  treated like grayscale.  Each model yaml knows what resolution is
-  compatible with Katana per memory constraints, and so uses that
-  resolution by default for training.  The resolution can be
-  overridden, with --imgsz, and all training images will be scaled
-  according to this resolution, though quantizing will always yield
-  the correct resolution model.
+   synet ultralytics [OTHER ULTRALYTICS ARGS]
 
-* Quantize
+   For instance, if you want to train a person keypoint model, you can
+   train a qVGA (320x240) model for the sabre chip with
 
-  The synet repository also includes the ability to quantize models
+   synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pase.yaml
 
-  synet quantize --weights MODEL_PT_SAVE --data REP_DATA
+   This will put all output at ./runs/train/exp.  See name project and
+   exists-ok in the Ultralytics docs for changing this.  The above
+   command also tries to download the coco dataset to ./datasets.  The
+   best way I have found to deal with this is with a symlink to my
+   desired location.
 
-  For instance, running:
+   ln -s /mnt/ml_data/datasets/ultralytics_autodownload ./datasets
 
-  synet quantize --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML
+   This makes a symlink at ./datasets which points to my datasets
+   directory.  Similarly, if you would like to train a VGA (480x640)
+   model (for instance, for data with much smaller objects), you could
+   run:
 
-  will create a tflite at ./exp/weights/best.tflite.  You may also
-  specify a model yaml like so:
+   synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
 
-  synet quantize --cfg kqvga3-5.2.yaml --data /PATH/TO/CUSTOM_DATASET.YAML
+   This will place the best weights at runs/train/exp/weights/best.pt.
+   Each model yaml knows what resolution is compatible with Sabre per
+   memory constraints, and so uses that resolution by default for
+   training.  The resolution can be overridden, with imgsz=..., and
+   all training images will be scaled according to this resolution,
+   though quantizing will still default to the compatible resolution.
+   "model=" is actually modified if the file does not exist to point
+   to a model in the SyNet model zoo.
 
-  This will place a quantized model at ./model.tflite.  This will let
-  you inspect the architecture, though it will not be a trained model,
-  so the model output will be useless.
+   Support for YOLOv5 as a backend is currently out of date, but
+   support may be added back in the future.
 
-* Visualize
+** Quantize
 
-  You can visualize your trained model on some data using YOLOv5's
-  detect function like so:
+   The SyNet repository also includes the ability to quantize models
 
-  synet detect --weights ./exp/weights/best.pt --source /PATH/TO/IMAGE/VIDEO/URL/ETC
+   synet quantize --backend BACKEND --weights MODEL_PT_SAVE --data REP_DATA
 
-  This will place a modified copy of the --source in
-  runs/detect/exp[#] with bounding box annotations added from the
-  model you specified.
+   For instance, running:
 
-* Advanced
+   synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML
+
+   will create a tflite at ./exp/weights/best.tflite.  You may also
+   specify a model yaml like so:
+
+   synet quantize --cfg sabre-keypoint-qvga.yaml
+
+   This will place a quantized model at ./model.tflite.  This will let
+   you inspect the architecture, though it will not be a trained model,
+   so the model output will be useless.
+
+** Visualize
+
+* Python API
+
+  SyNet 
 
 ** Creating Custom Model Architectures
 
@@ -128,7 +146,7 @@
     [[https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data]].
     Generally, datasets have multiple classes.  However, tiny neural
     network models need to be much more specialized, so you generally
-    train on only a few classes.  To this end, synet provides one
+    train on only a few classes.  To this end, SyNet provides one
     additional convenience function to create a data subset with the
     desired classes.  However, it only supports datasets where the
     splits are specified as a directory, not as a text file or list
@@ -171,13 +189,13 @@
 
 *** BYO Pytorch Training Code
 
-    In arbitrary traning code, you should be able to use synet like a
+    In arbitrary traning code, you should be able to use SyNet like a
     normal library:
 
     from synet import get_model
     model = get_model("/path/to/model.pt/or/model.yaml")
 
-    If the model is in our zoo (see synet/zoo/*.yaml), you can give
+    If the model is in our zoo (see synet/zoo/**.yaml), you can give
     the model yaml name like:
 
     model = get_model("katana-qvga.yaml")
@@ -198,7 +216,7 @@
 *** From modified YOLOv5 code
 
     If your training code is a fork of yolo, these steps may be more
-    appropriate.  Create custom_patches.py in synet from
+    appropriate.  Create custom_patches.py in SyNet from
     yolov5_patches.py.  In train.py add:
 
     from synet.custom_patches import patch_custom
@@ -215,7 +233,7 @@
     Model(synet.zoo.find_model_path(self.cfg) or ..., ...)
 
     In this second case, you will be able to specify a --cfg with a
-    yaml name like 'katana-kvga.yaml', and the yaml from the synet
+    yaml name like 'katana-kvga.yaml', and the yaml from the SyNet
     repo will be used (backwards compatible, so is a safe change).
 
 ** Quantizing from Python
@@ -253,9 +271,11 @@
 
 * TODO
 
+  - Need chip-specific export
+    - functionality should go in synet/<chip>.py or
+      synet/<chip>/quantize.py or synet/<chip>/__init__.py
+  - Need better backend organization.  Maybe in
+    synet/backends/<backend>.py
   - Finish empty README entries above
   - Decide if base.Grayscale grayscale method should be improved
     - possibly change default Grayscale behavior
-  - Asses if depthwise convolutions can be useful with modern
-    architectures (now that features are higher earlier on.)
-    - possibly add flag for depthwise convs in Inverted Residual

@@ -13,6 +13,7 @@ from torch import no_grad
 
 from . import get_model
 from .base import askeras
+from .backends import get_backend
 
 
 def parse_opt():
@@ -21,6 +22,7 @@ obtains arguments.
 
     """
     parser = ArgumentParser()
+    parser.add_argument("--backend", type=get_backend)
     parser.add_argument("--cfg")
     parser.add_argument("--weights")
     parser.add_argument("--image-shape", nargs=2, type=int)
@@ -31,14 +33,18 @@ obtains arguments.
     return parser.parse_args()
 
 
-def run(image_shape, weights, cfg, data, number, channels, kwds):
+def run(backend, image_shape, weights, cfg, data, number, channels, kwds):
     """Entrypoint to quantize.py.  Quantize the model specified by
 weights (falling back to cfg), using samples from the data yaml with
 image shape image_shape, using only number samples.
 
     """
     # obtain the pytorch model from weights or cfg, prioritizing weights
-    model = get_model(weights or cfg, raw=True)
+    model = backend.get_model(weights or cfg)
+
+    # maybe get image shape
+    if image_shape is None:
+        image_shape = backend.get_shape(model)
 
     # generate keras model
     inp = Input(image_shape+[channels], batch_size=1)
@@ -119,3 +125,7 @@ samples reshaped to image_shape.
 def phony_data(image_shape, channels):
     for _ in range(2):
         yield [rand(1, *image_shape, channels).astype(float32)]
+
+
+def main():
+    return run(**vars(parse_opt()))
