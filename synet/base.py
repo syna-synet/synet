@@ -42,20 +42,14 @@ askeras = AsKeras()
 
 class Conv2d(Module):
     """Convolution operator which ensures padding is done equivalently
-between PyTorch and TensorFlow.  Currently, only supports kernel_size
-and stride combose specified in first assert in __init__.  If you add
-more supported configurations, be sure to add those configurations to
-test.py.
+    between PyTorch and TensorFlow.
 
     """
-
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  bias=False):
         super().__init__()
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
-        # assert (kernel_size, stride) in [(1, 1), (3, 1), (3, 2)] \
-        #     or not (kernel_size % 2)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size
@@ -70,14 +64,14 @@ test.py.
         if askeras.use_keras:
             return self.as_keras(x)
 
-        # make padding like in tensorflow, which right aligns convolutions.
-
+        # make padding like in tensorflow, which right aligns convolutionn.
+        H, W = (s if isinstance(s, int) else s.item() for s in x.shape[-2:])
         # radius of the kernel and carry.  Border size + carry.  All in y
         ry, rcy = divmod(self.kernel_size[0]-1, 2)
-        by, bcy = divmod((x.shape[-2]-1)%self.stride - rcy, 2)
+        by, bcy = divmod((H-1) % self.stride - rcy, 2)
         # radius of the kernel and carry.  Border size + carry.  All in x
         rx, rcx = divmod(self.kernel_size[1]-1, 2)
-        bx, bcx = divmod((x.shape[-1]-1)%self.stride - rcx, 2)
+        bx, bcx = divmod((W-1) % self.stride - rcx, 2)
         # apply pad
         return self.conv(pad(x, (rx-bx-bcx, rx-bx, ry-by-bcy, ry-by)))
 
@@ -108,6 +102,12 @@ test.py.
         if name in ("bias", "weight"):
             return setattr(self.conv, name, value)
         return super().__setattr__(name, value)
+
+
+# don't try to move this assignment into class def.  It won't work.
+# This is for compatibility with NNI so it does not treat this like a
+# pytorch conv2d, and instead finds the nested conv2d.
+Conv2d.__name__ = "Synet_Conv2d"
 
 
 class Grayscale(Module):

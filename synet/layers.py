@@ -10,7 +10,7 @@ layers.py, and [chip].py:
 
 """
 
-from .base import ReLU, BatchNorm, Conv2d, Module, Sequential
+from .base import ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale, Sequential
 
 
 class InvertedResidual(Module):
@@ -78,15 +78,3 @@ out of that layer.  num (default 4) convolutions are used in total.
 
     def forward(self, x):
         return self.model(x)
-
-
-class Vertebra(Module):
-
-    def __init__(self, in_channels, expansion_factor, num):
-        super().__init__()
-        self.layers = Sequential([InvertedResidual(in_channels,
-                                                   expansion_factor)
-                                  for i in range(num)])
-
-    def forward(self, x):
-        return x + self.layers(x)
