@@ -63,6 +63,7 @@ class Detect(Torch_Detect):
                                           Conv2d(c3, self.nc, 1, bias=True)])
                               for x in ch)
         self.dfl = DFL(sm_split=sm_split)
+        self.type = "detect"
 
     def forward(self, x):
         if askeras.use_keras:
@@ -98,6 +99,13 @@ class Detect(Torch_Detect):
                                                                  )(cv3(xi))
                                                          for cv3, xi in
                                                          zip(self.cv3, x)]))])
+        out = [box1, box2, sigmoid(Concatenate(-2)([Reshape((-1, self.nc)
+                                                            )(cv3(xi))
+                                                    for cv3, xi in
+                                                    zip(self.cv3, x)]))]
+        if self.type == "detect":
+            return Concatenate(-1)(out)
+        return out
 
 
 class Pose(Torch_Pose, Detect):
@@ -105,6 +113,7 @@ class Pose(Torch_Pose, Detect):
         super().__init__(nc, kpt_shape, ch)
         Detect.__init__(self, nc, ch, sm_split)
         self.detect = Detect.forward
+        self.type = "pose"
         c4 = max(ch[0] // 4, self.nk)
         self.cv4 = ModuleList(Sequential((Conv2d(x, c4, 3),
                                           ReLU(6),
