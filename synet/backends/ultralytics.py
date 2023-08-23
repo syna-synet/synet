@@ -206,8 +206,10 @@ class Backend(BaseBackend):
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7):
-        """Default conf_thresh and iou_thresh taken from
-        ultralytics/cfg/default.yaml."""
+        """Default conf_thresh and iou_thresh (.25 and .75 resp.)
+        taken from ultralytics/cfg/default.yaml.
+
+        """
 
         print("processing", val_post)
         model = self.get_model(weights, full=True)
@@ -236,6 +238,19 @@ class Backend(BaseBackend):
                         ).plot())
 
     def tf_post(self, tflite, val_post, conf_thresh, iou_thresh):
+        """Loads the tflite, loads the image, preprocesses the image,
+        evaluates the tflite on the pre-processed image, and performs
+        post-processing on the tflite output with a given confidence
+        and iou threshold.
+
+        :param tflite: Path to tflite file, or a raw tflite buffer
+        :param val_post: Path to image to evaluate on.
+        :param conf_thresh: Confidence threshould.  See val_post docstring
+        above for default value details.
+        :param iou_thresh: IoU threshold for NMS.  See val_post docstring
+        above for default value details.
+
+        """
 
         # initialize tflite interpreter.
         from tensorflow import lite
@@ -248,12 +263,12 @@ class Backend(BaseBackend):
         out_scale_zero_index = [(*detail['quantization'], detail['index'])
                                 for detail in interpreter.get_output_details()]
 
-        # make image RGB (not BGR) channel order, BCHW dimensions, and in the
-        # range [0, 1].
-        # cv2's imread reads in BGR channel order, with dimensions in Height,
-        # Width, Channel order.  Also, imread keeps images as integers in
-        # [0,255].  Normalize to floats in [0, 1].  Also, model expects a
-        # batch dimension, so add a dimension at the beginning
+        # make image RGB (not BGR) channel order, BCHW dimensions, and
+        # in the range [0, 1].  cv2's imread reads in BGR channel
+        # order, with dimensions in Height, Width, Channel order.
+        # Also, imread keeps images as integers in [0,255].  Normalize
+        # to floats in [0, 1].  Also, model expects a batch dimension,
+        # so add a dimension at the beginning
         im = imread(val_post)[newaxis, ..., ::-1] / 255
 
         # run tflite on image
@@ -261,15 +276,20 @@ class Backend(BaseBackend):
         assert interpreter.get_input_details()[0]['dtype'] is int8
         interpreter.set_tensor(0, (im / in_scale + in_zero).astype(int8))
         interpreter.invoke()
+        # indexing below with [0] removes the batch dimension
         tout = [(interpreter.get_tensor(index)[0].astype(float32) - zero) * scale
                 for scale, zero, index in out_scale_zero_index]
+        # this ordering corresponds to the ordering of
+        # interpreter.get_output_details(), not the index order.  The
+        # indices are neither consecutive, nor monotonic.
         b1, kpresence, kcoord, b2, bclass = tout
 
         # the number of keypoints and classes can be found from output shapes
         _, num_kpts, _ = kcoord.shape
         _, num_classes = bclass.shape
 
-        # find the box class confidence and number.
+        # find the box class confidence and number.  class_num is only
+        # relevant for multiclass.
         conf = npmax(bclass, axis=1, keepdims=True)
         class_num = argmax(bclass, axis=1, keepdims=True)
 

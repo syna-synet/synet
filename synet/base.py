@@ -9,6 +9,10 @@ layers.py, and [chip].py:
 - [chip].py should only import from base.py and layers.py.
 """
 
+from typing import Tuple, Union, Optional
+
+import keras
+from keras.layers import Conv2D as Keras_Conv2d
 from torch import cat as torch_cat, minimum, tensor, no_grad
 from torch.nn import (Conv2d as Torch_Conv2d, BatchNorm2d as
                       Torch_Batchnorm, Module, ModuleList as
@@ -45,8 +49,25 @@ class Conv2d(Module):
     between PyTorch and TensorFlow.
 
     """
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 bias=False):
+
+    def __init__(self,
+                 in_channels: int,
+                 out_channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: int = 1,
+                 bias: bool = False,
+                 padding: Optional[bool] = True,
+                 groups: Optional[int] = 1):
+        """
+        Implementation of torch Conv2D with option fot supporting keras
+            inference
+        :param in_channels: Number of channels in the input
+        :param out_channels: Number of channels produced by the convolution
+        :param kernel_size: Size of the kernel
+        :param stride:
+        :param bias:
+        :param groups: using for pointwise/depthwise
+        """
         super().__init__()
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
@@ -54,15 +75,22 @@ class Conv2d(Module):
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
+        self.padding = padding
+        self.groups = groups
         self.conv = Torch_Conv2d(in_channels=in_channels,
                                  out_channels=out_channels,
-                                 kernel_size=kernel_size, bias=bias,
-                                 stride=stride)
+                                 kernel_size=kernel_size,
+                                 bias=bias,
+                                 stride=stride,
+                                 groups=self.groups)
         self.use_bias = bias
 
     def forward(self, x):
         if askeras.use_keras:
             return self.as_keras(x)
+
+        if hasattr(self, "padding") and not self.padding:
+            return self.conv(x)
 
         # make padding like in tensorflow, which right aligns convolutionn.
         H, W = (s if isinstance(s, int) else s.item() for s in x.shape[-2:])
@@ -73,15 +101,18 @@ class Conv2d(Module):
         rx, rcx = divmod(self.kernel_size[1]-1, 2)
         bx, bcx = divmod((W-1) % self.stride - rcx, 2)
         # apply pad
-        return self.conv(pad(x, (rx-bx-bcx, rx-bx, ry-by-bcy, ry-by)))
+        return self.conv(
+            pad(x, (rx - bx - bcx, rx - bx, ry - by - bcy, ry - by)))
 
     def as_keras(self, x):
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
-        from keras.layers import Conv2D as Keras_Conv2d
+        padding_param = 'same' if self.padding else 'valid'
         conv = Keras_Conv2d(filters=self.out_channels,
                             kernel_size=self.kernel_size,
-                            strides=self.stride, padding="same",
-                            use_bias=self.use_bias)
+                            strides=self.stride,
+                            padding=padding_param,
+                            use_bias=self.use_bias,
+                            groups=self.groups)
         conv.build(x.shape[1:])
         if isinstance(self.conv, Torch_Conv2d):
             tconv = self.conv
@@ -129,6 +160,45 @@ class Conv2d(Module):
 # This is for compatibility with NNI so it does not treat this like a
 # pytorch conv2d, and instead finds the nested conv2d.
 Conv2d.__name__ = "Synet_Conv2d"
+
+
+class DepthwiseConv2d(Conv2d):
+    """
+    Depth-wise Conv2D using pytorch and supports as_keras
+    """
+    def __init__(self, channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: int = 1,
+                 bias: bool = False,
+                 padding: Optional[bool] = True):
+        """
+        :param channels: channels in/out/groups
+        :param kernel_size:
+        :param stride:
+        :param bias:
+        :param padding:
+        """
+        super().__init__(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=kernel_size,
+            stride=stride, bias=bias,
+            padding=padding, groups=channels
+        )
+
+    def as_keras(self, x):
+        assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
+        padding_param = 'same' if self.padding else 'valid'
+
+        depthwise = keras.layers.DepthwiseConv2D(
+            kernel_size=self.kernel_size,
+            strides=self.stride,
+            padding=padding_param,
+            use_bias=self.use_bias,
+            kernel_initializer=keras.initializers.Constant(
+                self.conv.weight.permute(2, 3, 1, 0).numpy())
+        )
+        return depthwise(x)
 
 
 class Grayscale(Module):

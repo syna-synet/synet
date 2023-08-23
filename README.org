@@ -258,13 +258,18 @@
 
 *** running the test suite
 
-* TODO
+* Contributing
 
-  - Need chip-specific export
-    - functionality should go in synet/<chip>.py or
-      synet/<chip>/quantize.py or synet/<chip>/__init__.py
-  - Need better backend organization.  Maybe in
-    synet/backends/<backend>.py
-  - Finish empty README entries above
-  - Decide if base.Grayscale grayscale method should be improved
-    - possibly change default Grayscale behavior
+** Coding Style
+   While you should generally conform to pep8 and the like, an exception is made for
+
+** TODO
+
+   - Need chip-specific export
+     - functionality should go in synet/<chip>.py or
+       synet/<chip>/quantize.py or synet/<chip>/__init__.py
+   - Need better backend organization.  Maybe in
+     synet/backends/<backend>.py
+   - Finish empty README entries above
+   - Decide if base.Grayscale grayscale method should be improved
+     - possibly change default Grayscale behavior
