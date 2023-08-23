@@ -39,7 +39,7 @@ class DFL(Torch_DFL):
     def as_keras(self, x):
         # b, ay, ax, c = x.shape
         from tensorflow.keras.layers import Reshape, Softmax
-        if self.sm_split is not None:
+        if hasattr(self, "sm_split") and self.sm_split is not None:
             from tensorflow.keras.layers import Concatenate
             assert not (x.shape[0]*x.shape[1]*x.shape[2]*4) % self.sm_split
             x = Reshape((self.sm_split, -1, self.c1))(x)
