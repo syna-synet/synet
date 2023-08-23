@@ -11,7 +11,6 @@ from numpy.random import rand
 from tensorflow import int8, lite
 from torch import no_grad
 
-from . import get_model
 from .base import askeras
 from .backends import get_backend
 
@@ -30,16 +29,32 @@ obtains arguments.
     parser.add_argument("--kwds", nargs="+", default=[])
     parser.add_argument("--channels", "-c", default=3, type=int)
     parser.add_argument("--number", "-n", default=500, type=int)
+    parser.add_argument("--val-post",
+                        help="path to sample image to validate on.")
+    parser.add_argument("--tflite",
+                        help="path to existing tflite (for validating).")
     return parser.parse_args()
 
 
-def run(backend, image_shape, weights, cfg, data, number, channels, kwds):
+def run(backend, image_shape, weights, cfg, data, number, channels, kwds,
+        val_post, tflite):
     """Entrypoint to quantize.py.  Quantize the model specified by
 weights (falling back to cfg), using samples from the data yaml with
 image shape image_shape, using only number samples.
 
     """
     backend.patch()
+
+    if tflite is None:
+        tflite = get_tflite(backend, image_shape, weights, cfg, data,
+                            number, channels, kwds)
+
+    if val_post:
+        backend.val_post(weights, tflite, val_post)
+
+
+def get_tflite(backend, image_shape, weights, cfg, data, number,
+               channels, kwds):
 
     # obtain the pytorch model from weights or cfg, prioritizing weights
     model = backend.get_model(weights or cfg)
@@ -64,7 +79,7 @@ image shape image_shape, using only number samples.
         out = splitext(weights or cfg)[0]+".tflite"
 
     # quantize the model
-    quantize(kmodel, data, image_shape, number, out, channels)
+    return quantize(kmodel, data, image_shape, number, out, channels)
 
 
 def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1,
@@ -82,20 +97,22 @@ out_path.
 
     if generator:
         converter.representative_dataset = generator
-    # use our data if given
     elif data is None:
         converter.representative_dataset = \
             lambda: phony_data(image_shape, channels)
     else:
         converter.representative_dataset = \
             lambda: representative_data(data, image_shape, N, channels)
+
     # quantize
     tflite_quant_model = converter.convert()
-    if out_path is None:
-        return tflite_quant_model
+
     # write out tflite
-    with open(out_path, "wb") as f:
-        f.write(tflite_quant_model)
+    if out_path:
+        with open(out_path, "wb") as f:
+            f.write(tflite_quant_model)
+
+    return tflite_quant_model
 
 
 def representative_data(data, image_shape, N, channels):

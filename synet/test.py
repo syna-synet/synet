@@ -47,7 +47,7 @@ return max error between two output activations
     """
     tout = layer(torch_inp[:])
     with askeras(train=True, imgsz=torch_inp[0].shape[-2:],
-                 xywh=True):
+                 xywh=True, test=True):
         kout = layer(t_actv_to_k(torch_inp))
     if isinstance(tout, dict):
         assert len(tout) == len(kout)

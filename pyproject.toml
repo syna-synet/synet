@@ -9,7 +9,8 @@ dependencies = [
     "torch",
     "keras",
     "tensorflow",
-    "yolov5",
+    #"yolov5",
+    "ultralytics",
 ]
 
 [tool.setuptools.package-data]

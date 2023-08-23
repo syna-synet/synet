@@ -11,4 +11,4 @@ supported in ultralytics format."""
     print("loading", model_path)
 
     backend = get_backend(backend)
-    return backend.get_model(model, *args, **kwds)
+    return backend.get_model(model_path, *args, **kwds)

@@ -96,7 +96,7 @@
 
    synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
 
-   This will place the best weights at runs/train/exp/weights/best.pt.
+   This will place the best weights at runs/train/pose/weights/best.pt.
    Each model yaml knows what resolution is compatible with Sabre per
    memory constraints, and so uses that resolution by default for
    training.  The resolution can be overridden, with imgsz=..., and

@@ -9,7 +9,7 @@ layers.py, and [chip].py:
 - [chip].py should only import from base.py and layers.py.
 """
 
-from torch import cat as torch_cat, minimum, tensor
+from torch import cat as torch_cat, minimum, tensor, no_grad
 from torch.nn import (Conv2d as Torch_Conv2d, BatchNorm2d as
                       Torch_Batchnorm, Module, ModuleList as
                       Torch_Modulelist, ReLU as Torch_ReLU)
@@ -83,8 +83,12 @@ class Conv2d(Module):
                             strides=self.stride, padding="same",
                             use_bias=self.use_bias)
         conv.build(x.shape[1:])
-        weight = self.conv.weight.detach().numpy().transpose(2, 3, 1, 0)
-        conv.set_weights([weight, self.conv.bias.detach().numpy()]
+        if isinstance(self.conv, Torch_Conv2d):
+            tconv = self.conv
+        else:
+            tconv = self.conv.module
+        weight = tconv.weight.detach().numpy().transpose(2, 3, 1, 0)
+        conv.set_weights([weight, tconv.bias.detach().numpy()]
                          if self.use_bias else
                          [weight])
         return conv(x)
@@ -103,6 +107,23 @@ class Conv2d(Module):
             return setattr(self.conv, name, value)
         return super().__setattr__(name, value)
 
+    def split_channels(self, chans):
+
+        with no_grad():
+            split = Conv2d(self.in_channels, len(chans),
+                           self.kernel_size, self.stride, self.use_bias)
+            split.weight[:] = self.weight[chans]
+
+            rest_chans = [i for i in range(self.out_channels) if i not in chans]
+            rest = Conv2d(self.in_channels, self.out_channels - len(chans),
+                          self.kernel_size, self.stride, self.use_bias)
+            rest.weight[:] = self.weight[rest_chans]
+
+            if self.use_bias:
+                split.bias[:] = self.bias[chans]
+                rest.bias[:] = self.bias[rest_chans]
+
+        return split, rest
 
 # don't try to move this assignment into class def.  It won't work.
 # This is for compatibility with NNI so it does not treat this like a
@@ -179,10 +200,14 @@ class BatchNorm(Module):
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
         batchnorm.build(x.shape)
-        weights = self.batchnorm.weight.detach().numpy()
-        bias = self.batchnorm.bias.detach().numpy()
-        running_mean = self.batchnorm.running_mean.detach().numpy()
-        running_var = self.batchnorm.running_var.detach().numpy()
+        if isinstance(self.batchnorm, Torch_Batchnorm):
+            bn = self.batchnorm
+        else:
+            bn = self.batchnorm.module
+        weights = bn.weight.detach().numpy()
+        bias = bn.bias.detach().numpy()
+        running_mean = bn.running_mean.detach().numpy()
+        running_var = bn.running_var.detach().numpy()
         batchnorm.set_weights([weights, bias, running_mean, running_var])
         return batchnorm(x, training=askeras.kwds["train"])
 
@@ -198,4 +223,6 @@ class Sequential(Module):
         return x
 
     def __getitem__(self, i):
-        return self.ml[i]
+        if isinstance(i, int):
+            return self.ml[i]
+        return Sequential(self.ml[i])
