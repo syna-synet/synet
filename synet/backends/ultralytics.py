@@ -74,6 +74,8 @@ class Detect(Torch_Detect):
                                           ReLU(6),
                                           Conv2d(c3, self.nc, 1, bias=True)])
                               for x in ch)
+        if junk is None:
+            sm_split=None
         self.dfl = DFL(sm_split=sm_split)
         self.type = "detect"
 
@@ -118,7 +120,7 @@ class Detect(Torch_Detect):
 class Pose(Torch_Pose, Detect):
     def __init__(self, nc, kpt_shape, ch, sm_split=None, junk=None):
         super().__init__(nc, kpt_shape, ch)
-        Detect.__init__(self, nc, ch, sm_split)
+        Detect.__init__(self, nc, ch, sm_split, junk=junk)
         self.detect = Detect.forward
         self.type = "pose"
         c4 = max(ch[0] // 4, self.nk)
