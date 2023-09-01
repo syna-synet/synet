@@ -75,8 +75,8 @@ out of that layer.  num (default 4) convolutions are used in total.
         super().__init__()
         self.relu = ReLU(6)
         self.model = Sequential([
-            Sequential([Conv2d(out_channels if i else in_channels,
-                               out_channels,
+            Sequential([Conv2d(in_channels,
+                               in_channels if i < num - 1 else out_channels,
                                3,
                                bias=True),
                         self.relu])

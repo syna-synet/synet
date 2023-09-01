@@ -195,7 +195,7 @@ class Backend(BaseBackend):
     def get_shape(self, model):
         if isinstance(model, str):
             model = self.get_model(model)
-        return model.yaml["image_shape"]
+        return model.model.yaml["image_shape"]
 
     def patch(self):
         module = import_module("...layers", __name__)
