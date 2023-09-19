@@ -5,21 +5,22 @@ from sys import argv
 
 from cv2 import imread, imwrite
 from numpy import (newaxis, int8, float32, concatenate as cat,
-                   max as npmax, argmax)
+                   max as npmax, argmax, array)
 from torch import tensor
 from torch.nn import ModuleList
 from torchvision.ops import nms
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from ultralytics.nn import tasks
-from ultralytics.nn.modules.block import DFL as Torch_DFL
+from ultralytics.nn.modules.block import DFL as Torch_DFL, Proto as Torch_Proto
 from ultralytics.nn.modules.head import (Pose as Torch_Pose,
-                                         Detect as Torch_Detect)
+                                         Detect as Torch_Detect,
+                                         Segment as Torch_Segment)
 from ultralytics.utils.ops import non_max_suppression
 
 from . import Backend as BaseBackend
-from ..base import askeras, Conv2d, ReLU
-from ..layers import Sequential
+from ..base import askeras, Conv2d, ReLU, BatchNorm, Upsample
+from ..layers import Sequential, CoBNRLU
 from ..zoo import in_zoo, get_config
 
 
@@ -57,27 +58,35 @@ class DFL(Torch_DFL):
                        )(self.conv(Softmax(-1)(Reshape((-1, 4, self.c1))(x))))
 
 
+class Proto(Torch_Proto):
+    def __init__(self, c1, c_=256, c2=32):  # ch_in, number of protos, number of masks
+        super().__init__(c1, c_, c2)
+        self.cv1 = CoBNRLU(c1, c_, 3)
+        self.upsample = Upsample(scale_factor=2, mode='bilinear')
+        self.cv2 = CoBNRLU(c_, c_, 3)
+        self.cv3 = CoBNRLU(c_, c2, 1)
+
+
 class Detect(Torch_Detect):
     def __init__(self, nc=80, ch=(), sm_split=None, junk=None):
         super().__init__(nc, ch)
-        c2, c3 = max((16, ch[0] // 4, self.reg_max * 4)), max(ch[0], self.nc)
-        self.cv2 = ModuleList(Sequential([Conv2d(x, c2, 3, bias=True),
-                                          ReLU(6),
-                                          Conv2d(c2, c2, 3, bias=True),
-                                          ReLU(6),
-                                          Conv2d(c2, 4 * self.reg_max, 1,
-                                                 bias=True)])
+        c2 = max((16, ch[0] // 4, self.reg_max * 4))
+        self.cv2 = ModuleList(Sequential(Conv2d(x, c2, 3, bias=True),
+                                         ReLU(6),
+                                         Conv2d(c2, c2, 3, bias=True),
+                                         ReLU(6),
+                                         Conv2d(c2, 4 * self.reg_max, 1,
+                                                bias=True))
                               for x in ch)
-        self.cv3 = ModuleList(Sequential([Conv2d(x, c3, 3, bias=True),
-                                          ReLU(6),
-                                          Conv2d(c3, c3, 3, bias=True),
-                                          ReLU(6),
-                                          Conv2d(c3, self.nc, 1, bias=True)])
+        self.cv3 = ModuleList(Sequential(Conv2d(x, x, 3, bias=True),
+                                         ReLU(6),
+                                         Conv2d(x, x, 3, bias=True),
+                                         ReLU(6),
+                                         Conv2d(x, self.nc, 1, bias=True))
                               for x in ch)
         if junk is None:
             sm_split=None
         self.dfl = DFL(sm_split=sm_split)
-        self.type = "detect"
 
     def forward(self, x):
         if askeras.use_keras:
@@ -90,12 +99,13 @@ class Detect(Torch_Detect):
         from tensorflow.math import ceil
         from tensorflow.keras.layers import Concatenate
         from tensorflow.keras.activations import sigmoid
-        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
+        imgsz = array(askeras.kwds['imgsz'])
+        H, W = imgsz
+        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item() / imgsz[[1,0,1,0]]
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
-        H, W = askeras.kwds['imgsz']
-        anchors = concat([stack((reshape((sx+.5)*s, (-1,)),
-                                 reshape((sy+.5)*s, (-1,))),
+        anchors = concat([stack((reshape((sx+.5)*s/W, (-1,)),
+                                 reshape((sy+.5)*s/H, (-1,))),
                                 -1)
                           for s, (sy, sx) in ((s.item(),
                                                meshgrid(range(ceil(H/s)),
@@ -112,9 +122,9 @@ class Detect(Torch_Detect):
                                                             )(cv3(xi))
                                                     for cv3, xi in
                                                     zip(self.cv3, x)]))]
-        if self.type == "detect":
-            return Concatenate(-1)(out)
-        return out
+        if askeras.kwds.get("quant_export"):
+            return out
+        return Concatenate(-1)(out)
 
 
 class Pose(Torch_Pose, Detect):
@@ -122,13 +132,12 @@ class Pose(Torch_Pose, Detect):
         super().__init__(nc, kpt_shape, ch)
         Detect.__init__(self, nc, ch, sm_split, junk=junk)
         self.detect = Detect.forward
-        self.type = "pose"
         c4 = max(ch[0] // 4, self.nk)
-        self.cv4 = ModuleList(Sequential((Conv2d(x, c4, 3),
-                                          ReLU(6),
-                                          Conv2d(c4, c4, 3),
-                                          ReLU(6),
-                                          Conv2d(c4, self.nk, 1)))
+        self.cv4 = ModuleList(Sequential(Conv2d(x, c4, 3),
+                                         ReLU(6),
+                                         Conv2d(c4, c4, 3),
+                                         ReLU(6),
+                                         Conv2d(c4, self.nk, 1))
                               for x in ch)
 
     def forward(self, *args, **kwds):
@@ -143,19 +152,28 @@ class Pose(Torch_Pose, Detect):
         return stride
 
     def as_keras(self, x):
-        from tensorflow.keras.layers import Reshape
+        from tensorflow.keras.layers import Reshape, Concatenate
         from tensorflow import (meshgrid, range as trange, stack,
                                 reshape, concat)
         from tensorflow.math import ceil
-        from tensorflow.keras.layers import Concatenate
         from tensorflow.keras.activations import sigmoid
-        presence_chans = [i*3+2 for i in range(17)]
-        pres, coord = zip(*((Reshape((-1, self.kpt_shape[0], 1))(presence(xi)),
-                             Reshape((-1, self.kpt_shape[0], 2))(coord(xi)*s*2))
-                            for presence, coord, xi, s in
-                            ((*cv[-1].split_channels(presence_chans),
-                              cv[:-1](xi), s.item())
-                             for cv, xi, s in zip(self.cv4, x, self.stride))))
+        if self.kpt_shape[1] == 3:
+            presence_chans = [i*3+2 for i in range(17)]
+            pres, coord = zip(*((Reshape((-1, self.kpt_shape[0], 1)
+                                         )(presence(xi)),
+                                 Reshape((-1, self.kpt_shape[0], 2)
+                                         )(coord(xi)*s*2))
+                                for presence, coord, xi, s in
+                                ((*cv[-1].split_channels(presence_chans),
+                                  cv[:-1](xi), s.item())
+                                 for cv, xi, s in
+                                 zip(self.cv4, x, self.stride))))
+            pres = [sigmoid(p) for p in pres]
+        else:
+            coord = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
+                     for cv, xi, s in
+                     zip(self.cv4, x, self.stride)]
+            pres = []
         x = self.detect(self, x)
         H, W = askeras.kwds['imgsz']
         anchors = concat([stack((reshape(sx * s, (-1, 1)),
@@ -167,14 +185,44 @@ class Pose(Torch_Pose, Detect):
                                                         indexing="ij"))
                                               for s in self.stride)],
                          -3)
-        coord = Concatenate(-3)(coord) + anchors
-        pres = sigmoid(Concatenate(-3)(pres))
-        if askeras.kwds.get('test', False):
-            return Concatenate(-1)(
-                (*x, Reshape((-1, self.nk))(Concatenate(-1)((coord, pres))))
-            )
-        return *x, coord, pres
+        if askeras.kwds.get("quant_export"):
+            return *x, *coord, *prese
+        kpts = Concatenate(-3)(coord) + anchors
+        if self.kpt_shape[1] == 3:
+            kpts = Concatenate(-1)((kpts, Concatenate(-3)(pres)))
+        return Concatenate(-1)((x, Reshape((-1, self.nk))(kpts)))
 
+
+class Segment(Torch_Segment, Detect):
+    """YOLOv8 Segment head for segmentation models."""
+
+    def __init__(self, nc=80, nm=32, npr=256, ch=(), sm_split=None, junk=None):
+        super().__init__(nc, nm, npr, ch)
+        Detect.__init__(self, nc, ch, sm_split, junk=junk)
+        self.detect = Detect.forward
+        self.proto = Proto(ch[0], self.npr, self.nm)  # protos
+        c4 = max(ch[0] // 4, self.nm)
+        for x in ch:
+            print("ultralytics uses", c4, "hidden filters.  Using", x, "instead.")
+        self.cv4 = ModuleList(Sequential(CoBNRLU(x, x, 3),
+                                         CoBNRLU(x, x, 3),
+                                         Conv2d(x, nm, 1))
+                              for x in ch)
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return super().forward(x)
+
+    def as_keras(self, x):
+        from tensorflow.keras.layers import Reshape, Concatenate
+        p = self.proto(x[0])
+        mc = Concatenate(-2)([Reshape((-1, self.nm))(cv4(xi))
+                             for cv4, xi in zip(self.cv4, x)])
+        x = self.detect(self, x)
+        if askeras.kwds.get("quant_export"):
+            return *x, mc, p
+        return Concatenate(-1)((x, mc)), p
 
 class Backend(BaseBackend):
 
@@ -194,7 +242,7 @@ class Backend(BaseBackend):
 
     def get_shape(self, model):
         if isinstance(model, str):
-            model = self.get_model(model)
+            model = self.get_model(model, full=True)
         return model.model.yaml["image_shape"]
 
     def patch(self):

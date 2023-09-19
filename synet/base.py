@@ -2,21 +2,22 @@
 logic of how to run as a keras model.  This is handled by cheking the
 'askeras' context manager, and running in "keras mode" if that context
 is enabled.  As a rule of thumb to differentiate between base.py,
-layers.py, and [chip].py:
+layers.py:
 
 - base.py should only import from torch, keras, and tensorflow.
 - layers.py should only import from base.py.
-- [chip].py should only import from base.py and layers.py.
 """
 
 from typing import Tuple, Union, Optional
 
-import keras
-from keras.layers import Conv2D as Keras_Conv2d
 from torch import cat as torch_cat, minimum, tensor, no_grad
-from torch.nn import (Conv2d as Torch_Conv2d, BatchNorm2d as
-                      Torch_Batchnorm, Module, ModuleList as
-                      Torch_Modulelist, ReLU as Torch_ReLU)
+from torch.nn import (Module,
+                      Conv2d as Torch_Conv2d,
+                      BatchNorm2d as Torch_Batchnorm,
+                      ModuleList as Torch_Modulelist,
+                      ReLU as Torch_ReLU,
+                      ConvTranspose2d as Torch_ConvTranspose2d,
+                      Upsample as Torch_Upsample)
 from torch.nn.functional import pad
 
 
@@ -105,18 +106,20 @@ class Conv2d(Module):
             pad(x, (rx - bx - bcx, rx - bx, ry - by - bcy, ry - by)))
 
     def as_keras(self, x):
+        from keras.layers import Conv2D as Keras_Conv2d
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
-        padding_param = 'same' if self.padding else 'valid'
+        padding_param = 'same' if not hasattr(self, "padding") or self.padding else 'valid'
         conv = Keras_Conv2d(filters=self.out_channels,
                             kernel_size=self.kernel_size,
                             strides=self.stride,
                             padding=padding_param,
                             use_bias=self.use_bias,
-                            groups=self.groups)
+                            groups=self.groups if hasattr(self, "groups") else 1)
         conv.build(x.shape[1:])
         if isinstance(self.conv, Torch_Conv2d):
             tconv = self.conv
         else:
+            # for NNI compatibility
             tconv = self.conv.module
         weight = tconv.weight.detach().numpy().transpose(2, 3, 1, 0)
         conv.set_weights([weight, tconv.bias.detach().numpy()]
@@ -162,43 +165,39 @@ class Conv2d(Module):
 Conv2d.__name__ = "Synet_Conv2d"
 
 
-class DepthwiseConv2d(Conv2d):
-    """
-    Depth-wise Conv2D using pytorch and supports as_keras
-    """
-    def __init__(self, channels: int,
-                 kernel_size: Union[int, Tuple[int, int]],
-                 stride: int = 1,
-                 bias: bool = False,
-                 padding: Optional[bool] = True):
-        """
-        :param channels: channels in/out/groups
-        :param kernel_size:
-        :param stride:
-        :param bias:
-        :param padding:
-        """
-        super().__init__(
-            in_channels=channels,
-            out_channels=channels,
-            kernel_size=kernel_size,
-            stride=stride, bias=bias,
-            padding=padding, groups=channels
-        )
+class ConvTranspose2d(Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=False):
+        print("WARNING: synet ConvTranspose2d mostly untested")
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = "valid" if padding == 0 else "same"
+        self.use_bias = bias
+        self.conv = Torch_ConvTranspose2d(in_channels, out_channels,
+                                          kernel_size, stride,
+                                          padding, bias=bias)
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return self.conv(x)
 
     def as_keras(self, x):
-        assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
-        padding_param = 'same' if self.padding else 'valid'
-
-        depthwise = keras.layers.DepthwiseConv2D(
-            kernel_size=self.kernel_size,
-            strides=self.stride,
-            padding=padding_param,
-            use_bias=self.use_bias,
-            kernel_initializer=keras.initializers.Constant(
-                self.conv.weight.permute(2, 3, 1, 0).numpy())
-        )
-        return depthwise(x)
+        from keras.layers import Conv2DTranspose as Keras_ConvTrans
+        conv = Keras_ConvTrans(self.out_channels, self.kernel_size, self.stride,
+                               self.padding, use_bias=self.use_bias)
+        conv.build(x.shape)
+        if isinstance(self.conv, Torch_ConvTranspose2d):
+            tconv = self.conv
+        else:
+            # for NNI compatibility
+            tconv = self.conv.module
+        weight = tconv.weight.detach().numpy().transpose(2, 3, 1, 0)
+        conv.set_weights([weight, tconv.bias.detach().numpy()]
+                         if self.use_bias else
+                         [weight])
+        return conv(x)
 
 
 class Grayscale(Module):
@@ -282,8 +281,31 @@ class BatchNorm(Module):
         return batchnorm(x, training=askeras.kwds["train"])
 
 
+class Upsample(Module):
+    allowed_modes = "bilinear", "nearest"
+    def __init__(self, scale_factor, mode="nearest"):
+        assert mode in self.allowed_modes
+        if not isinstance(scale_factor, int):
+            for sf in scale_factor:
+                assert isinstance(sf, int)
+        super().__init__()
+        self.scale_factor = scale_factor
+        self.mode = mode
+        self.upsample = Torch_Upsample(scale_factor=scale_factor, mode=mode)
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return self.upsample(x)
+
+    def as_keras(self, x):
+        from keras.layers import UpSampling2D
+        return UpSampling2D(size=self.scale_factor,
+                            interpolation=self.mode,
+                            )(x)
+
 class Sequential(Module):
-    def __init__(self, sequence):
+    def __init__(self, *sequence):
         super().__init__()
         self.ml = Torch_Modulelist(sequence)
 
@@ -295,4 +317,4 @@ class Sequential(Module):
     def __getitem__(self, i):
         if isinstance(i, int):
             return self.ml[i]
-        return Sequential(self.ml[i])
+        return Sequential(*self.ml[i])

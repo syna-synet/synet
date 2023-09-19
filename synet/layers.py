@@ -2,17 +2,28 @@
 defines useful composite layers which are compatible with multiple
 chips.  Because it is built with layers from base.py, exports come
 "free".  As a rule of thumb to differentiate between base.py,
-layers.py, and [chip].py:
+layers.py:
 
 - base.py should only import from torch, keras, and tensorflow.
 - layers.py should only import from base.py.
-- [chip].py should only import from base.py and layers.py."""
+"""
 from typing import Union, Tuple, Optional
 
 from torch import Tensor
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
-                   Sequential, DepthwiseConv2d)
+                   Sequential)
+
+
+class DepthwiseConv2d(Conv2d):
+    def __init__(self,
+                 channels: int,
+                 kernel_size: Union[int, Tuple[int, int]],
+                 stride: int = 1,
+                 bias: bool = False,
+                 padding: Optional[bool] = True):
+        super().__init__(channels, channels, kernel_size, stride,
+                         bias, padding, groups=channels)
 
 
 class Conv2dInvertedResidual(Module):
@@ -21,7 +32,6 @@ class Conv2dInvertedResidual(Module):
     Inspired by Inverted Residual blocks which are the main building block
     of MobileNet.  It is stable and gives low peek memory before and after.
     Additionally, the computations are extremely efficient on our chips
->>>>>>> 228ac72e7ae8d009ad9c220a77d25841a0b105b5
     """
 
     def __init__(self, in_channels, expansion_factor,
@@ -37,18 +47,15 @@ class Conv2dInvertedResidual(Module):
         if out_channels is None:
             out_channels = in_channels
         hidden = int(in_channels * expansion_factor)
-        self.layers = Sequential([
-            Conv2d(in_channels,
-                   out_channels=hidden,
-                   kernel_size=3,
-                   stride=stride),
-            BatchNorm(hidden),
-            ReLU(6),
-            Conv2d(in_channels=hidden,
-                   out_channels=out_channels,
-                   kernel_size=1),
-            BatchNorm(out_channels)
-        ])
+        self.layers = Sequential(Conv2d(in_channels,
+                                        out_channels=hidden,
+                                        kernel_size=3, stride=stride),
+                                 BatchNorm(hidden),
+                                 ReLU(6),
+                                 Conv2d(in_channels=hidden,
+                                        out_channels=out_channels,
+                                        kernel_size=1),
+                                 BatchNorm(out_channels))
         self.stride = stride
         self.cheq = in_channels == out_channels
         assert self.stride in (1, 2)
@@ -74,14 +81,14 @@ out of that layer.  num (default 4) convolutions are used in total.
         """
         super().__init__()
         self.relu = ReLU(6)
-        self.model = Sequential([
-            Sequential([Conv2d(in_channels,
-                               in_channels if i < num - 1 else out_channels,
-                               3,
-                               bias=True),
-                        self.relu])
+        self.model = Sequential(
+            Sequential(Conv2d(in_channels,
+                              in_channels if i < num - 1 else out_channels,
+                              3,
+                              bias=True),
+                       self.relu)
             for i in range(num)
-        ])
+        )
 
     def forward(self, x):
         return self.model(x)
@@ -107,9 +114,11 @@ class DepthwiseSeparableConv2D(Module):
         :param conv_2d_params: Additional arguments passed to nn.Conv2d
         """
         super().__init__()
-        self.depthwise = DepthwiseConv2d(
-            channels=in_channels, kernel_size=kernel_size, stride=stride,
-            bias=False, padding=padding)
+        self.depthwise = DepthwiseConv2d(channels=in_channels,
+                                         kernel_size=kernel_size,
+                                         stride=stride,
+                                         bias=False,
+                                         padding=padding)
         self.pointwise = Conv2d(in_channels, out_channels,
                                 kernel_size=1, bias=bias)
 
@@ -140,25 +149,22 @@ class DepthwiseInvertedResidual(Conv2dInvertedResidual):
         if out_channels is None:
             out_channels = in_channels
         hidden = int(in_channels * expansion_factor)
-        pointwise_expand = Conv2d(
-            in_channels=in_channels, out_channels=hidden, kernel_size=1,
-            padding=False)
-        depthwise = DepthwiseConv2d(
-            channels=hidden, kernel_size=3, bias=False)
-        pointwise_squeeze = Conv2d(
-            in_channels=hidden, out_channels=out_channels, kernel_size=1,
-            padding=False)
-
-        self.layers = Sequential([
-            pointwise_expand,
-            BatchNorm(hidden),
-            ReLU(6),
-            depthwise,
-            ReLU(6),
-            BatchNorm(hidden),
-            pointwise_squeeze,
-            BatchNorm(out_channels)
-        ])
+        self.layers = Sequential(Conv2d(in_channels=in_channels,
+                                        out_channels=hidden,
+                                        kernel_size=1,
+                                        padding=False),
+                                 BatchNorm(hidden),
+                                 ReLU(6),
+                                 DepthwiseConv2d(channels=hidden,
+                                                 kernel_size=3,
+                                                 bias=False),
+                                 ReLU(6),
+                                 BatchNorm(hidden),
+                                 Conv2d(in_channels=hidden,
+                                        out_channels=out_channels,
+                                        kernel_size=1,
+                                        padding=False),
+                                 BatchNorm(out_channels))
 
 
 class DepthwiseSeparableInvertedResidual(Conv2dInvertedResidual):
@@ -174,15 +180,25 @@ class DepthwiseSeparableInvertedResidual(Conv2dInvertedResidual):
         if out_channels is None:
             out_channels = in_channels
         hidden = int(in_channels * expansion_factor)
-        self.layers = Sequential([
-            DepthwiseSeparableConv2D(in_channels,
-                                     out_channels=hidden,
-                                     kernel_size=3,
-                                     stride=stride),
-            BatchNorm(hidden),
-            ReLU(6),
-            Conv2d(in_channels=hidden,
-                   out_channels=out_channels,
-                   kernel_size=1),
-            BatchNorm(out_channels)
-        ])
+        self.layers = Sequential(DepthwiseSeparableConv2D(in_channels,
+                                                          out_channels=hidden,
+                                                          kernel_size=3,
+                                                          stride=stride),
+                                 BatchNorm(hidden),
+                                 ReLU(6),
+                                 Conv2d(in_channels=hidden,
+                                        out_channels=out_channels,
+                                        kernel_size=1),
+                                 BatchNorm(out_channels))
+
+
+class CoBNRLU(Module):
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, bias=False, groups=1, max_val=6):
+        super().__init__()
+        self.module = Sequential(Conv2d(in_channels, out_channels,
+                                        kernel_size, stride, bias, groups),
+                                 BatchNorm(out_channels),
+                                 ReLU(max_val))
+    def forward(self, x):
+        return self.module(x)

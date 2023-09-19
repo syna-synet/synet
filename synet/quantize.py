@@ -65,7 +65,8 @@ def get_tflite(backend, image_shape, weights, cfg, data, number,
 
     # generate keras model
     inp = Input(image_shape+[channels], batch_size=1)
-    with askeras(imgsz=image_shape, **dict(s.split("=") for s in kwds)), \
+    with askeras(imgsz=image_shape, quant_export=True,
+                 **dict(s.split("=") for s in kwds)), \
          no_grad():
         kmodel = Model(inp, model(inp))
 
