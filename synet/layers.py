@@ -67,6 +67,7 @@ class Conv2dInvertedResidual(Module):
         if self.stride == 2 or (self.stride == 1 and not self.cheq):
             return y
 
+
 # for backwards compatibility
 InvertedResidual = Conv2dInvertedResidual
 
@@ -81,13 +82,12 @@ out of that layer.  num (default 4) convolutions are used in total.
         """
         super().__init__()
         self.relu = ReLU(6)
-        self.model = Sequential(
-            Sequential(Conv2d(in_channels,
-                              in_channels if i < num - 1 else out_channels,
-                              3,
-                              bias=True),
-                       self.relu)
-            for i in range(num)
+        out_channels = [in_channels] * (num - 1) + [out_channels]
+        self.model = Sequential(*(Sequential(Conv2d(in_channels,
+                                                    out_channels,
+                                                    3, bias=True),
+                                             self.relu)
+                                  for out_channels in out_channels)
         )
 
     def forward(self, x):
@@ -200,5 +200,6 @@ class CoBNRLU(Module):
                                         kernel_size, stride, bias, groups),
                                  BatchNorm(out_channels),
                                  ReLU(max_val))
+
     def forward(self, x):
         return self.module(x)

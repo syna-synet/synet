@@ -76,7 +76,7 @@ class Conv2d(Module):
         self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
-        self.padding = padding
+        self.padding = "same" if padding else 'valid'
         self.groups = groups
         self.conv = Torch_Conv2d(in_channels=in_channels,
                                  out_channels=out_channels,
@@ -90,7 +90,7 @@ class Conv2d(Module):
         if askeras.use_keras:
             return self.as_keras(x)
 
-        if hasattr(self, "padding") and not self.padding:
+        if self.padding == "valid":
             return self.conv(x)
 
         # make padding like in tensorflow, which right aligns convolutionn.
@@ -108,13 +108,12 @@ class Conv2d(Module):
     def as_keras(self, x):
         from keras.layers import Conv2D as Keras_Conv2d
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
-        padding_param = 'same' if not hasattr(self, "padding") or self.padding else 'valid'
         conv = Keras_Conv2d(filters=self.out_channels,
                             kernel_size=self.kernel_size,
                             strides=self.stride,
-                            padding=padding_param,
+                            padding=self.padding,
                             use_bias=self.use_bias,
-                            groups=self.groups if hasattr(self, "groups") else 1)
+                            groups=self.groups)
         conv.build(x.shape[1:])
         if isinstance(self.conv, Torch_Conv2d):
             tconv = self.conv
@@ -159,6 +158,7 @@ class Conv2d(Module):
 
         return split, rest
 
+
 # don't try to move this assignment into class def.  It won't work.
 # This is for compatibility with NNI so it does not treat this like a
 # pytorch conv2d, and instead finds the nested conv2d.
@@ -166,7 +166,8 @@ Conv2d.__name__ = "Synet_Conv2d"
 
 
 class ConvTranspose2d(Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, padding, bias=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, padding,
+                 bias=False):
         print("WARNING: synet ConvTranspose2d mostly untested")
         super().__init__()
         self.in_channels = in_channels
@@ -178,6 +179,7 @@ class ConvTranspose2d(Module):
         self.conv = Torch_ConvTranspose2d(in_channels, out_channels,
                                           kernel_size, stride,
                                           padding, bias=bias)
+
     def forward(self, x):
         if askeras.use_keras:
             return self.as_keras(x)
@@ -283,6 +285,7 @@ class BatchNorm(Module):
 
 class Upsample(Module):
     allowed_modes = "bilinear", "nearest"
+
     def __init__(self, scale_factor, mode="nearest"):
         assert mode in self.allowed_modes
         if not isinstance(scale_factor, int):
@@ -303,6 +306,7 @@ class Upsample(Module):
         return UpSampling2D(size=self.scale_factor,
                             interpolation=self.mode,
                             )(x)
+
 
 class Sequential(Module):
     def __init__(self, *sequence):

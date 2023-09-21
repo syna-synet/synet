@@ -19,7 +19,7 @@ from ultralytics.nn.modules.head import (Pose as Torch_Pose,
 from ultralytics.utils.ops import non_max_suppression
 
 from . import Backend as BaseBackend
-from ..base import askeras, Conv2d, ReLU, BatchNorm, Upsample
+from ..base import askeras, Conv2d, ReLU, Upsample
 from ..layers import Sequential, CoBNRLU
 from ..zoo import in_zoo, get_config
 
@@ -59,7 +59,9 @@ class DFL(Torch_DFL):
 
 
 class Proto(Torch_Proto):
-    def __init__(self, c1, c_=256, c2=32):  # ch_in, number of protos, number of masks
+    def __init__(self, c1, c_=256, c2=32):
+        """arguments understood as in_channels, number of protos, and
+        number of masks"""
         super().__init__(c1, c_, c2)
         self.cv1 = CoBNRLU(c1, c_, 3)
         self.upsample = Upsample(scale_factor=2, mode='bilinear')
@@ -85,7 +87,7 @@ class Detect(Torch_Detect):
                                          Conv2d(x, self.nc, 1, bias=True))
                               for x in ch)
         if junk is None:
-            sm_split=None
+            sm_split = None
         self.dfl = DFL(sm_split=sm_split)
 
     def forward(self, x):
@@ -99,9 +101,9 @@ class Detect(Torch_Detect):
         from tensorflow.math import ceil
         from tensorflow.keras.layers import Concatenate
         from tensorflow.keras.activations import sigmoid
-        imgsz = array(askeras.kwds['imgsz'])
-        H, W = imgsz
-        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item() / imgsz[[1,0,1,0]]
+        H, W = askeras.kwds['imgsz']
+        scale = array((W, H, W, H))
+        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item() / scale
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
         anchors = concat([stack((reshape((sx+.5)*s/W, (-1,)),
@@ -186,7 +188,7 @@ class Pose(Torch_Pose, Detect):
                                               for s in self.stride)],
                          -3)
         if askeras.kwds.get("quant_export"):
-            return *x, *coord, *prese
+            return *x, *coord, *pres
         kpts = Concatenate(-3)(coord) + anchors
         if self.kpt_shape[1] == 3:
             kpts = Concatenate(-1)((kpts, Concatenate(-3)(pres)))
@@ -203,10 +205,12 @@ class Segment(Torch_Segment, Detect):
         self.proto = Proto(ch[0], self.npr, self.nm)  # protos
         c4 = max(ch[0] // 4, self.nm)
         for x in ch:
-            print("ultralytics uses", c4, "hidden filters.  Using", x, "instead.")
-        self.cv4 = ModuleList(Sequential(CoBNRLU(x, x, 3),
-                                         CoBNRLU(x, x, 3),
-                                         Conv2d(x, nm, 1))
+            if c4 != self.nm:
+                print("ultralytics normally uses", c4,
+                      "hidden filters.  Using", self.nm, "instead.")
+        self.cv4 = ModuleList(Sequential(CoBNRLU(x, self.nm, 3),
+                                         CoBNRLU(self.nm, self.nm, 3),
+                                         Conv2d(self.nm, nm, 1))
                               for x in ch)
 
     def forward(self, x):
@@ -242,8 +246,8 @@ class Backend(BaseBackend):
 
     def get_shape(self, model):
         if isinstance(model, str):
-            model = self.get_model(model, full=True)
-        return model.model.yaml["image_shape"]
+            model = self.get_model(model)
+        return model.yaml["image_shape"]
 
     def patch(self):
         module = import_module("...layers", __name__)
@@ -253,6 +257,7 @@ class Backend(BaseBackend):
         tasks.Concat = module.Cat
         tasks.Detect = Detect
         tasks.Pose = Pose
+        tasks.Segment = Segment
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7):
