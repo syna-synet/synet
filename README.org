@@ -251,8 +251,6 @@
    - Need chip-specific export
      - functionality should go in synet/<chip>.py or
        synet/<chip>/quantize.py or synet/<chip>/__init__.py
-   - Need better backend organization.  Maybe in
-     synet/backends/<backend>.py
-   - Finish empty README entries above
    - Decide if base.Grayscale grayscale method should be improved
      - possibly change default Grayscale behavior
+     - support variable channel count in backend

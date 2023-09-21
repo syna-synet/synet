@@ -1,18 +1,21 @@
 from importlib import import_module
+from shutil import copy
+
+from ..zoo import in_zoo, get_config, get_configs
 
 
 class Backend:
     def get_model(self, model_path):
         """Load model from config, or pretrained save."""
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
 
     def get_shape(self, model):
         """Get shape of model."""
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
 
     def patch(self):
         """Initialize backend to utilize Synet Modules"""
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7):
@@ -20,7 +23,7 @@ class Backend:
         taken from ultralytics/cfg/default.yaml.
 
         """
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
 
     def tf_post(self, tflite, val_post, conf_thresh, iou_thresh):
         """Loads the tflite, loads the image, preprocesses the image,
@@ -36,11 +39,19 @@ class Backend:
         above for default value details.
 
         """
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
 
     def get_chip(self, model):
         """Get chip of model."""
-        raise NotImplemented("Please subclass and implement")
+        raise NotImplementedError("Please subclass and implement")
+
+    def maybe_grab_from_zoo(self, config_path):
+        if in_zoo(config_path, self.name):
+            copy(get_config(config_path, self.name), config_path)
+        return config_path
+
+    def get_configs(self):
+        return get_configs(self.name)
 
 
 def get_backend(name):

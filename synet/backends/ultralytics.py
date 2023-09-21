@@ -1,6 +1,4 @@
 from importlib import import_module
-from os.path import dirname, join, isfile, basename
-from shutil import copy
 from sys import argv
 
 from cv2 import imread, imwrite
@@ -21,7 +19,6 @@ from ultralytics.utils.ops import non_max_suppression
 from . import Backend as BaseBackend
 from ..base import askeras, Conv2d, ReLU, Upsample
 from ..layers import Sequential, CoBNRLU
-from ..zoo import in_zoo, get_config
 
 
 class DFL(Torch_DFL):
@@ -228,18 +225,21 @@ class Segment(Torch_Segment, Detect):
             return *x, mc, p
         return Concatenate(-1)((x, mc)), p
 
+
 class Backend(BaseBackend):
 
     models = {}
+    name = "ultralytics"
 
     def get_model(self, model_path, full=False):
-        if not isfile(model_path):
-            model_path = join(dirname(__file__), "..", "zoo", "ultralytics",
-                              model_path)
+
+        model_path = self.maybe_grab_from_zoo(model_path)
+
         if model_path in self.models:
             model = self.models[model_path]
         else:
             model = self.models[model_path] = YOLO(model_path)
+
         if full:
             return model
         return model.model
@@ -332,7 +332,8 @@ class Backend(BaseBackend):
         interpreter.set_tensor(0, (im / in_scale + in_zero).astype(int8))
         interpreter.invoke()
         # indexing below with [0] removes the batch dimension
-        tout = [(interpreter.get_tensor(index)[0].astype(float32) - zero) * scale
+        tout = [(interpreter.get_tensor(index)[0].astype(float32) - zero)
+                * scale
                 for scale, zero, index in out_scale_zero_index]
         # this ordering corresponds to the ordering of
         # interpreter.get_output_details(), not the index order.  The
@@ -395,20 +396,16 @@ def main():
     backend.patch()
 
     # copy model from zoo if necessary
-    for val in argv[1:]:
+    for ind, val in enumerate(argv):
         if val.startswith("model="):
-            model = val.split("=")[1]
-            if in_zoo(model, "ultralytics"):
-                src, model = get_config(model, "ultralytics"), basename(model)
-                copy(src, model)
-                argv.remove(val)
-                argv.append("model="+model)
+            model = backend.maybe_grab_from_zoo(val.split("=")[1])
+            argv[ind] = "model="+model
             break
     else:
         raise ValueError("no model specified")
 
     # add imgsz if not explicitly given
-    for val in argv[1:]:
+    for val in argv:
         if val.startswith("imgsz="):
             break
     else:

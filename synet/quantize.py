@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser
 from glob import glob
-from os.path import abspath, commonpath, dirname, isabs, isdir, join, splitext
+from os.path import dirname, isabs, isdir, join, splitext
 from random import shuffle
 
 from cv2 import imread, resize
@@ -15,15 +15,14 @@ from .base import askeras
 from .backends import get_backend
 
 
-def parse_opt():
+def parse_opt(args=None):
     """parse_opt() is used to make it compatible with how yolov5
 obtains arguments.
 
     """
     parser = ArgumentParser()
-    parser.add_argument("--backend", type=get_backend)
-    parser.add_argument("--cfg")
-    parser.add_argument("--weights")
+    parser.add_argument("--backend", type=get_backend, required=True)
+    parser.add_argument("--model", "--cfg", '--weights')
     parser.add_argument("--image-shape", nargs=2, type=int)
     parser.add_argument("--data")
     parser.add_argument("--kwds", nargs="+", default=[])
@@ -33,10 +32,10 @@ obtains arguments.
                         help="path to sample image to validate on.")
     parser.add_argument("--tflite",
                         help="path to existing tflite (for validating).")
-    return parser.parse_args()
+    return parser.parse_args(args=args)
 
 
-def run(backend, image_shape, weights, cfg, data, number, channels, kwds,
+def run(backend, image_shape, model, data, number, channels, kwds,
         val_post, tflite):
     """Entrypoint to quantize.py.  Quantize the model specified by
 weights (falling back to cfg), using samples from the data yaml with
@@ -44,43 +43,34 @@ image shape image_shape, using only number samples.
 
     """
     backend.patch()
+    model = backend.maybe_grab_from_zoo(model)
 
     if tflite is None:
-        tflite = get_tflite(backend, image_shape, weights, cfg, data,
+        tflite = get_tflite(backend, image_shape, model, data,
                             number, channels, kwds)
 
     if val_post:
-        backend.val_post(weights, tflite, val_post)
+        backend.val_post(model, tflite, val_post)
 
 
-def get_tflite(backend, image_shape, weights, cfg, data, number,
+def get_tflite(backend, image_shape, model_path, data, number,
                channels, kwds):
-
-    # obtain the pytorch model from weights or cfg, prioritizing weights
-    model = backend.get_model(weights or cfg)
 
     # maybe get image shape
     if image_shape is None:
-        image_shape = backend.get_shape(model)
+        image_shape = backend.get_shape(model_path)
 
     # generate keras model
     inp = Input(image_shape+[channels], batch_size=1)
     with askeras(imgsz=image_shape, quant_export=True,
                  **dict(s.split("=") for s in kwds)), \
          no_grad():
-        kmodel = Model(inp, model(inp))
-
-    # determine output file path
-    if not weights and dirname(__file__) == commonpath((__file__,
-                                                        abspath(cfg))):
-        # if pulling from model zoo, just place a model.tflite in cwd
-        out = "model.tflite"
-    else:
-        # otherwise, use input name, but with swapped out extension
-        out = splitext(weights or cfg)[0]+".tflite"
+        kmodel = Model(inp, backend.get_model(model_path)(inp))
 
     # quantize the model
-    return quantize(kmodel, data, image_shape, number, out, channels)
+    return quantize(kmodel, data, image_shape, number,
+                    splitext(model_path)[0]+".tflite",
+                    channels)
 
 
 def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1,
@@ -147,5 +137,5 @@ def phony_data(image_shape, channels):
         yield [rand(1, *image_shape, channels).astype(float32)]
 
 
-def main():
-    return run(**vars(parse_opt()))
+def main(args=None):
+    return run(**vars(parse_opt(args)))
