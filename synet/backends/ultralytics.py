@@ -2,11 +2,8 @@ from importlib import import_module
 from sys import argv
 
 from cv2 import imread, imwrite
-from numpy import (newaxis, int8, float32, concatenate as cat,
-                   max as npmax, argmax, array)
-from torch import tensor
+from numpy import array
 from torch.nn import ModuleList
-from torchvision.ops import nms
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from ultralytics.nn import tasks
@@ -19,6 +16,7 @@ from ultralytics.utils.ops import non_max_suppression
 from . import Backend as BaseBackend
 from ..base import askeras, Conv2d, ReLU, Upsample
 from ..layers import Sequential, CoBNRLU
+from ..tflite_utils import tf_post
 
 
 class DFL(Torch_DFL):
@@ -271,7 +269,7 @@ class Backend(BaseBackend):
         num_kpts = model.model.model[-1].kpt_shape[0]
 
         print("tflite post processing output")
-        tf_final = self.tf_post(tflite, val_post, conf_thresh, iou_thresh)
+        tf_final = tf_post(tflite, val_post, conf_thresh, iou_thresh)
         print(tf_final)
         imwrite("tf_val.png",
                 Results(orig_img=imread(val_post),
@@ -291,76 +289,6 @@ class Backend(BaseBackend):
                         boxes=pt_final[:, :6],
                         keypoints=tf_final[:, 6:].reshape(-1, num_kpts, 3)
                         ).plot())
-
-    def tf_post(self, tflite, val_post, conf_thresh, iou_thresh):
-        """Loads the tflite, loads the image, preprocesses the image,
-        evaluates the tflite on the pre-processed image, and performs
-        post-processing on the tflite output with a given confidence
-        and iou threshold.
-
-        :param tflite: Path to tflite file, or a raw tflite buffer
-        :param val_post: Path to image to evaluate on.
-        :param conf_thresh: Confidence threshould.  See val_post docstring
-        above for default value details.
-        :param iou_thresh: IoU threshold for NMS.  See val_post docstring
-        above for default value details.
-
-        """
-
-        # initialize tflite interpreter.
-        from tensorflow import lite
-        interpreter = lite.Interpreter(**{"model_path"
-                                          if isinstance(tflite, str) else
-                                          "model_content"
-                                          : tflite})
-        interpreter.allocate_tensors()
-        in_scale, in_zero = interpreter.get_input_details()[0]['quantization']
-        out_scale_zero_index = [(*detail['quantization'], detail['index'])
-                                for detail in interpreter.get_output_details()]
-
-        # make image RGB (not BGR) channel order, BCHW dimensions, and
-        # in the range [0, 1].  cv2's imread reads in BGR channel
-        # order, with dimensions in Height, Width, Channel order.
-        # Also, imread keeps images as integers in [0,255].  Normalize
-        # to floats in [0, 1].  Also, model expects a batch dimension,
-        # so add a dimension at the beginning
-        im = imread(val_post)[newaxis, ..., ::-1] / 255
-
-        # run tflite on image
-        assert interpreter.get_input_details()[0]['index'] == 0
-        assert interpreter.get_input_details()[0]['dtype'] is int8
-        interpreter.set_tensor(0, (im / in_scale + in_zero).astype(int8))
-        interpreter.invoke()
-        # indexing below with [0] removes the batch dimension
-        tout = [(interpreter.get_tensor(index)[0].astype(float32) - zero)
-                * scale
-                for scale, zero, index in out_scale_zero_index]
-        # this ordering corresponds to the ordering of
-        # interpreter.get_output_details(), not the index order.  The
-        # indices are neither consecutive, nor monotonic.
-        b1, kpresence, kcoord, b2, bclass = tout
-
-        # the number of keypoints and classes can be found from output shapes
-        _, num_kpts, _ = kcoord.shape
-        _, num_classes = bclass.shape
-
-        # find the box class confidence and number.  class_num is only
-        # relevant for multiclass.
-        conf = npmax(bclass, axis=1, keepdims=True)
-        class_num = argmax(bclass, axis=1, keepdims=True)
-
-        # Combine results AFTER dequantization (so values in 0-1 and
-        # 0-255 can be combined).
-        preds = cat((b1, b2, conf, class_num, cat((kcoord, kpresence), -1
-                                                  ).reshape(-1, num_kpts*3)),
-                    axis=-1)
-
-        # perform confidence thresholding, and convert to tensor for nms.
-        preds = tensor(preds[preds[:, 4] > conf_thresh])
-
-        # Perform NMS
-        # https://pytorch.org/vision/stable/generated/torchvision.ops.nms.html
-        return preds[nms(preds[:, :4], preds[:, 4], iou_thresh)]
 
     def pt_post(self, weights, val_post, conf_thresh, iou_thresh):
 
