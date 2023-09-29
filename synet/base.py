@@ -87,6 +87,11 @@ class Conv2d(Module):
         self.use_bias = bias
 
     def forward(self, x):
+
+        # temporary code for backwards compatibility
+        if not isinstance(self.padding, str):
+            self.padding = "same" if self.padding else 'valid'
+
         if askeras.use_keras:
             return self.as_keras(x)
 

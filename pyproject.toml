@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synet"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
     "torch",
     "keras",
     "tensorflow",
-    #"yolov5",
-    "ultralytics",
 ]
+
+[project.optional-dependencies]
+ultra = ["ultralytics"]
 
 [tool.setuptools.package-data]
 synet = ["zoo/**/*.yaml"]

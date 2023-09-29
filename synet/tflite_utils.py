@@ -1,27 +1,56 @@
+"""This module exists to hold all tflite related processing.  The main
+benefit of keeping this in a seperate modules is so that large
+dependencies (like ultralytics) need not be imported when simulating
+tflite execution (like for demos).  However, visualization
+(interpretation} of the model is left to ultralytics.  This module
+also serves as a reference for C and/or other implementations;
+however, do read any "Notes" sections in any function docstrings
+
+"""
+
 from typing import Optional, List
 
 from cv2 import imread
-from numpy import (newaxis, ndarray, int8, float32,
-                   concatenate as cat, max as npmax, argmax)
+from numpy import (newaxis, ndarray, int8, float32 as npfloat32,
+                   concatenate as cat, max as npmax, argmax, moveaxis)
 from tensorflow import lite
-from torch import tensor
+from torch import tensor, float32 as torchfloat32
 from torchvision.ops import nms
 
 
-def tf_post(tflite, val_post, conf_thresh, iou_thresh):
-    """Loads the tflite, loads the image, preprocesses the image,
+def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
+    """Run a tflite model on an image, including post-processing.
+
+    Loads the tflite, loads the image, preprocesses the image,
     evaluates the tflite on the pre-processed image, and performs
     post-processing on the tflite output with a given confidence and
     iou threshold.
 
-    :param tflite: Path to tflite file, or a raw tflite buffer
-    :param val_post: Path to image to evaluate on.
-    :param conf_thresh: Confidence threshold.  See val_post docstring
-    above for default value details.
-    :param iou_thresh: IoU threshold for NMS.  See val_post docstring
-    above for default value details.
+    Parameters
+    ----------
+    tflite : str or buffer
+        Path to tflite file, or a raw tflite buffer
+    img : str or ndarray
+        Path to image to evaluate on, or the image as read by cv2.imread.
+    conf_thresh : float
+        Confidence threshold applied before NMS
+    iou_thresh : float
+        IoU threshold for NMS
+    backend : {"ultralytics"}
+        The backend which is used.  For now, only "ultralytics" is supported.
+    task : {"classify", "detect", "segment", "pose"}
+        The computer vision task to which the tflite model corresponds.
+
+    Returns
+    -------
+    ndarray or tuple of ndarrys
+        Return the result of running preprocessing, tflite evaluation,
+        and postprocessing on the input image.  Segmentation models
+        produce two outputs as a tuple.
 
     """
+
+    assert backend == "ultralytics", "only supports ultralytics"
 
     # initialize tflite interpreter.
     interpreter = lite.Interpreter(**{"model_path"
@@ -29,33 +58,47 @@ def tf_post(tflite, val_post, conf_thresh, iou_thresh):
                                       "model_content"
                                       : tflite})
 
+    # read the image if given as path
+    if isinstance(img, str):
+        img = imread(img)
+
     # make image RGB (not BGR) channel order, BCHW dimensions, and
     # in the range [0, 1].  cv2's imread reads in BGR channel
     # order, with dimensions in Height, Width, Channel order.
     # Also, imread keeps images as integers in [0,255].  Normalize
     # to floats in [0, 1].  Also, model expects a batch dimension,
     # so add a dimension at the beginning
-    im = imread(val_post)[newaxis, ..., ::-1] / 255
+    img = img[newaxis, ..., ::-1] / 255
 
     # Run tflite interpreter on the input image
-    tout = tflite_interpreter_runner(interpreter, im)
+    tout = run_interpreter(interpreter, img)
 
     # Procces the tflite output to be one tensor
-    preds = tflite_process_output(tout, xywh=False, classes_to_index=True)
+    preds = concat_reshape(tout, task)
 
     # perform nms
-    preds = apply_post_process(preds, conf_thresh, iou_thresh)
-    return preds
+    return apply_nms(preds, conf_thresh, iou_thresh)
 
 
-def tflite_interpreter_runner(interpreter: Optional[lite.Interpreter],
-                              input_arr: ndarray) -> List[ndarray]:
+def run_interpreter(interpreter: Optional[lite.Interpreter],
+                    input_arr: ndarray) -> List[ndarray]:
+    """Evaluating tflite interpreter on input data
+
+    Parameters
+    ----------
+    interpreter : Interpreter
+        the tflite interpreter to run
+    input_arr : 4d ndarray
+        tflite model input with shape (batch, height, width, channels)
+
+    Returns
+    -------
+    list
+        List of output arrays from running interpreter.  The order and
+        content of the output is specific to the task and if model
+        outputs xywh or xyxy.
     """
-    Evaluating tflite interpreter on input data
-    :param interpreter: tflite interpreter
-    :param input_arr: model input
-    :return: list [bbox_x1y1, kpts_visibility, kpts_xy, bbox_x2y2, classes]
-    """
+
     interpreter.allocate_tensors()
     in_scale, in_zero = interpreter.get_input_details()[0]['quantization']
     out_scale_zero_index = [(*detail['quantization'], detail['index'])
@@ -63,33 +106,70 @@ def tflite_interpreter_runner(interpreter: Optional[lite.Interpreter],
     # run tflite on image
     assert interpreter.get_input_details()[0]['index'] == 0
     assert interpreter.get_input_details()[0]['dtype'] is int8
-    interpreter.set_tensor(0, (input_arr / in_scale + in_zero).astype(int8)
-                           )
+    interpreter.set_tensor(0, (input_arr / in_scale + in_zero).astype(int8))
     interpreter.invoke()
-    # indexing below with [0] removes the batch dimension
-    return [
-        (interpreter.get_tensor(index)[0].astype(float32) - zero) * scale
-        for scale, zero, index in out_scale_zero_index]
+    # indexing below with [0] removes the batch dimension, which is always 1.
+    return [(interpreter.get_tensor(index)[0].astype(npfloat32) - zero) * scale
+            for scale, zero, index in out_scale_zero_index]
 
 
-def tflite_process_output(model_output: List[ndarray],
-                          xywh: Optional[bool] = False,
-                          classes_to_index: Optional[bool] = True
-                          ) -> ndarray:
-    """
+def concat_reshape(model_output: List[ndarray],
+                   task: bool,
+                   xywh: Optional[bool] = False,
+                   classes_to_index: Optional[bool] = True
+                   ) -> ndarray:
+    """Concatenate, reshape, and transpose model output to match pytorch.
+
     This method reordering the tflite output structure to be fit to run
-    post process such as NMS etc. See the description below
-    :param model_output: [bbox_x1y1, kpts_visibility, kpts_xy, bbox_x2y2,
-        classes]
-    :param xywh: flag for convert xyxy to xywh
-    :param classes_to_index: flag for convert the classes output logits
-        to single class index
-    :return: ndarray of (x1y1x2y2 or xywh, conf,
-        class_index or classes logits, kpts_xyv,...]
+    post process such as NMS etc.
+
+    Parameters
+    ----------
+    model_output : list
+        Output from running tflite.
+    task : {"classify", "detect", "segment", "pose"}
+        The task the model performs.
+    xywh : bool, default=False
+        If true, model output should be interpreted as xywh
+    classes_to_index : bool, default=True
+        If true, convert the classes output logits to single class index
+
+    Returns
+    -------
+    ndarray or list
+        Final output after concatenating and reshaping input.  Returns
+        an ndarray for every task except "segment" which returns a
+        tupule of two arrays.
+
+    Notes
+    -----
+    The python implementation here concats all output before applying
+    nms.  This is to mirror the original pytorch implementation.  For
+    a more efficient implementation, you may want to perform
+    confidence thresholding and nms on the boxes and scores, masking
+    other tensor appropriately, before reshaping and concatenating.
+
+    Also, for segmentation, the proto mask is transposed (moveaxis())
+    to match the pytorch convention.  When transcribing this code for
+    other implementations, you may not want this behavior.
+
     """
 
-    b1, kpresence, kcoord, b2, bclass = model_output
+    # interperate input tuple of tensors based on task
+    if task == "pose":
+        kpresence, bclass, b1, b2, kcoord = model_output
+        _, num_kpts, _ = kcoord.shape
+    if task == "segment":
+        mc, b1, b2, proto, bclass = model_output
+    _, num_classes = bclass.shape
+    assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
 
+    # obtain class confidences
+    conf = npmax(bclass, axis=1, keepdims=True)
+    if classes_to_index:
+        bclass = argmax(bclass, axis=1, keepdims=True)
+
+    # possibly convert to xyxy if not already in that format
     if xywh:
         bbox_xy_center = (b1 + b2) / 2
         bbox_wh = b2 - b1
@@ -97,32 +177,54 @@ def tflite_process_output(model_output: List[ndarray],
     else:
         bbox = cat([b1, b2], -1)
 
-    # the number of keypoints and classes can be found from output shapes
-    _, num_kpts, _ = kcoord.shape
-    _, num_classes = bclass.shape
-
-    # find the box class confidence and number.  class_num is only
-    # relevant for multiclass.
-    conf = npmax(bclass, axis=1, keepdims=True)
-
-    if classes_to_index:
-        bclass = argmax(bclass, axis=1, keepdims=True)
-
-    # Combine results AFTER dequantization (so values in 0-1 and
-    # 0-255 can be combined).
-    return cat((bbox, conf, bclass, cat(
-        (kcoord, kpresence), -1).reshape(-1, num_kpts * 3)), axis=-1)
+    # return final output
+    if task == "segment":
+        # FW TEAM NOTE: the second element here move channel axis to
+        # beginning in line with pytorch behavior.  Make sure this is
+        # what you want before copying this behavior
+        return cat((bbox, conf, bclass, mc), axis=-1), moveaxis(proto, -1, 0)
+    if task == 'pose':
+        return cat((bbox, conf, bclass, cat((kcoord, kpresence), -1
+                                            ).reshape(-1, num_kpts * 3)),
+                   axis=-1)
 
 
-def apply_post_process(preds: ndarray, conf_thresh: float,
-                       iou_thresh: float):
+def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):
+    """Apply NMS on ndarray prepared model output
+
+    preds : ndarray or tuple of ndarray
+        prepared model output.  Is a tuple of two arrays for "segment" task
+    conf_thresh : float
+        confidence threshold applied before NMS.
+
+    Returns
+    -------
+    ndarray or tuple of ndarray
+        same structure as preds, but with some values suppressed (removed).
+
+    Notes
+    -----
+    This function converts ndarrays to pytorch tensors for two reasons:
+     - the nms code requires torch tensor inputs
+     - the output format becomes identical to that used by
+       ultralytics, and so can be passed to an ultralytics visualizer.
+
+    Also, as mentioned in the concat_reshape function, you may want to
+    perform nms and thresholding before combining all the output.
+
     """
-    Apply NMS on ndarray of: [x1y1x2y2, conf, class_index, kpts_xyv,...]
-    :param preds:
-    :return: same structure [x1y1x2y2, conf, class_index, kpts_xyv,...]
-    """
+
+    # segmentation task returns a tuple of (preds, proto)
+    if isinstance(preds, tuple):
+        is_tuple = True
+        preds, proto = preds
+    else:
+        is_tuple = False
+
     # perform confidence thresholding, and convert to tensor for nms.
-    preds = tensor(preds[preds[:, 4] > conf_thresh])
+    preds = tensor(preds[preds[:, 4] > conf_thresh], dtype=torchfloat32)
+
     # Perform NMS
     # https://pytorch.org/vision/stable/generated/torchvision.ops.nms.html
-    return preds[nms(preds[:, :4], preds[:, 4], iou_thresh)]
+    preds = preds[nms(preds[:, :4], preds[:, 4], iou_thresh)]
+    return (preds, tensor(proto)) if is_tuple else preds

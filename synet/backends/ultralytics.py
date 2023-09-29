@@ -1,3 +1,4 @@
+
 from importlib import import_module
 from sys import argv
 
@@ -11,12 +12,12 @@ from ultralytics.nn.modules.block import DFL as Torch_DFL, Proto as Torch_Proto
 from ultralytics.nn.modules.head import (Pose as Torch_Pose,
                                          Detect as Torch_Detect,
                                          Segment as Torch_Segment)
-from ultralytics.utils.ops import non_max_suppression
+from ultralytics.utils.ops import non_max_suppression, process_mask
 
 from . import Backend as BaseBackend
 from ..base import askeras, Conv2d, ReLU, Upsample
 from ..layers import Sequential, CoBNRLU
-from ..tflite_utils import tf_post
+from ..tflite_utils import tf_run
 
 
 class DFL(Torch_DFL):
@@ -97,12 +98,12 @@ class Detect(Torch_Detect):
         from tensorflow.keras.layers import Concatenate
         from tensorflow.keras.activations import sigmoid
         H, W = askeras.kwds['imgsz']
-        scale = array((W, H, W, H))
-        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item() / scale
+        scale = array((W, H))
+        ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
-        anchors = concat([stack((reshape((sx+.5)*s/W, (-1,)),
-                                 reshape((sy+.5)*s/H, (-1,))),
+        anchors = concat([stack((reshape((sx + .5) * s, (-1,)),
+                                 reshape((sy + .5) * s, (-1,))),
                                 -1)
                           for s, (sy, sx) in ((s.item(),
                                                meshgrid(range(ceil(H/s)),
@@ -121,6 +122,8 @@ class Detect(Torch_Detect):
                                                     zip(self.cv3, x)]))]
         if askeras.kwds.get("quant_export"):
             return out
+        # everything after here needs to be implemented by post-processing
+        out[:2] = (box/scale for box in out[:2])
         return Concatenate(-1)(out)
 
 
@@ -149,29 +152,30 @@ class Pose(Torch_Pose, Detect):
         return stride
 
     def as_keras(self, x):
+
         from tensorflow.keras.layers import Reshape, Concatenate
         from tensorflow import (meshgrid, range as trange, stack,
                                 reshape, concat)
         from tensorflow.math import ceil
         from tensorflow.keras.activations import sigmoid
+
         if self.kpt_shape[1] == 3:
             presence_chans = [i*3+2 for i in range(17)]
-            pres, coord = zip(*((Reshape((-1, self.kpt_shape[0], 1)
-                                         )(presence(xi)),
-                                 Reshape((-1, self.kpt_shape[0], 2)
-                                         )(coord(xi)*s*2))
-                                for presence, coord, xi, s in
-                                ((*cv[-1].split_channels(presence_chans),
-                                  cv[:-1](xi), s.item())
-                                 for cv, xi, s in
-                                 zip(self.cv4, x, self.stride))))
-            pres = [sigmoid(p) for p in pres]
+            pres, kpts = zip(*((Reshape((-1, self.kpt_shape[0], 1)
+                                        )(presence(xi)),
+                                Reshape((-1, self.kpt_shape[0], 2)
+                                        )(keypoint(xi)*s*2))
+                               for presence, keypoint, xi, s in
+                               ((*cv[-1].split_channels(presence_chans),
+                                 cv[:-1](xi), s.item())
+                                for cv, xi, s in
+                                zip(self.cv4, x, self.stride))))
+            pres = Concatenate(-3)([sigmoid(p) for p in pres])
         else:
-            coord = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
-                     for cv, xi, s in
-                     zip(self.cv4, x, self.stride)]
-            pres = []
-        x = self.detect(self, x)
+            kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
+                    for cv, xi, s in
+                    zip(self.cv4, x, self.stride)]
+
         H, W = askeras.kwds['imgsz']
         anchors = concat([stack((reshape(sx * s, (-1, 1)),
                                  reshape(sy * s, (-1, 1))),
@@ -182,11 +186,19 @@ class Pose(Torch_Pose, Detect):
                                                         indexing="ij"))
                                               for s in self.stride)],
                          -3)
+        kpts = Concatenate(-3)(kpts) + anchors
+
+        x = self.detect(self, x)
+
         if askeras.kwds.get("quant_export"):
-            return *x, *coord, *pres
-        kpts = Concatenate(-3)(coord) + anchors
+            if self.kpt_shape[1] == 3:
+                return *x, kpts, pres
+            return *x, kpts
+
+        # everything after here needs to be implemented by post-processing
         if self.kpt_shape[1] == 3:
-            kpts = Concatenate(-1)((kpts, Concatenate(-3)(pres)))
+            kpts = Concatenate(-1)((kpts, pres))
+
         return Concatenate(-1)((x, Reshape((-1, self.nk))(kpts)))
 
 
@@ -221,6 +233,7 @@ class Segment(Torch_Segment, Detect):
         x = self.detect(self, x)
         if askeras.kwds.get("quant_export"):
             return *x, mc, p
+        # everything after here needs to be implemented by post-processing
         return Concatenate(-1)((x, mc)), p
 
 
@@ -264,36 +277,58 @@ class Backend(BaseBackend):
 
         """
 
-        print("processing", val_post)
+        # load model and image
+        print("processing", val_post, "with", weights)
         model = self.get_model(weights, full=True)
-        num_kpts = model.model.model[-1].kpt_shape[0]
+        img = imread(val_post)
 
-        print("tflite post processing output")
-        tf_final = tf_post(tflite, val_post, conf_thresh, iou_thresh)
-        print(tf_final)
-        imwrite("tf_val.png",
-                Results(orig_img=imread(val_post),
-                        path=val_post,
-                        names=model.names,
-                        boxes=tf_final[:, :6],
-                        keypoints=tf_final[:, 6:].reshape(-1, num_kpts, 3)
-                        ).plot())
+        # run th tf model, save plot, and print the values
+        print("tflite post processing")
+        tf_final = tf_run(tflite, img, conf_thresh, iou_thresh, "ultralytics",
+                          task=model.task)
+        self.gen_visualization(tf_final, img, val_post, model, "tf_val.png",
+                               print_arrs=True)
 
+        # run the pt model, save plot, and print the values
         print("pytorch post processing output")
-        pt_final = self.pt_post(weights, val_post, conf_thresh, iou_thresh)
-        print(pt_final)
-        imwrite("pt_val.png",
-                Results(orig_img=imread(val_post),
-                        path=val_post,
-                        names=model.names,
-                        boxes=pt_final[:, :6],
-                        keypoints=tf_final[:, 6:].reshape(-1, num_kpts, 3)
-                        ).plot())
+        pt_final = self.pt_run(model, val_post, conf_thresh, iou_thresh)
+        self.gen_visualization(pt_final, img, val_post, model, "pt_val.png",
+                               print_arrs=True)
 
-    def pt_post(self, weights, val_post, conf_thresh, iou_thresh):
+    def gen_visualization(self, model_output, img, img_path, model, out_file,
+                          print_arrs=True):
 
-        # obtain the pytorch model.
-        model = self.get_model(weights, full=True)
+        # interpret model output format
+        if isinstance(model_output, tuple):
+            pred, proto = model_output
+        else:
+            pred = model_output
+
+        # optionally, print arrays
+        if print_arrs:
+            if model.task == 'segment':
+                print("proto, every 10^2 pixel, one channel:")
+                print("proto shape,", proto.shape)
+                print(proto[::10, ::10, 0])
+            print("preds after NMS:")
+            print(pred)
+
+        # add task-specific options
+        kwds = dict()
+        if model.task != "classify":
+            kwds['boxes'] = pred[:, :6]
+        if model.task == "pose":
+            kwds['keypoints'] = pred[:, 6:].reshape(-1, *model.model.kpt_shape)
+        if model.task == "segment":
+            kwds['masks'] = process_mask(proto, pred[:, 6:], pred[:, :4],
+                                         img.shape[:2], upsample=True)
+
+        # return image
+        imwrite(out_file, Results(orig_img=img, path=img_path,
+                                  names=model.names, **kwds
+                                  ).plot())
+
+    def pt_run(self, model, val_post, conf_thresh, iou_thresh):
 
         # Run the predictor.
         model(val_post)
@@ -301,19 +336,32 @@ class Backend(BaseBackend):
         # The predictors saves the last batch to self.batch
         _, im0s, _, _ = model.predictor.batch
 
+        # obtain and interpret output of model when run on the image
+        pred = model.predictor.inference(model.predictor.preprocess(im0s))
+        if model.task == 'segment':
+            pred, proto = pred
+            # treating as in
+            # ultralytics/ultralytics/models/yolo/segment/predict.py:
+            # second output is len 3 if pt, but only 1 if exported
+            if len(proto) == 3:
+                proto = proto[-1]
+            proto = proto[0]
+
         # Rteurn the result of non-maximum supression -
-        return non_max_suppression(
+        preds = non_max_suppression(
             # - on the input processed as in engine/predictor.py, -
-            model.predictor.inference(model.predictor.preprocess(im0s)),
-            # - with the parameters as used in models/yolo/pose/predict.py.
+            pred,
+            # - with the parameters as used in models/yolo/pose/predict.py -
             model.predictor.args.conf,
             model.predictor.args.iou,
             agnostic=model.predictor.args.agnostic_nms,
             max_det=model.predictor.args.max_det,
             classes=model.predictor.args.classes,
             nc=len(model.predictor.model.names)
-        # ignoring batch dimension (just one image)
-        )[0]
+        )[0]  # - ignoring batch dimension (just one image)
+        if model.task == 'segment':
+            return preds, proto
+        return preds
 
 
 def main():

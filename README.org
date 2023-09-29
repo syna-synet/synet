@@ -28,13 +28,16 @@
   In more complex setups, you should create a virtual environment:
   https://docs.python.org/3/library/venv.html
 
+  In the following examples, we include the ultralytics backend.  For
+  a core SyNet install, omit the '[ultra]' below.
+
   To install via pip:
 
-  pip install git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git
+  pip install git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]
 
   or if you have cloned to a local repository:
 
-  pip install [-e] /PATH/TO/LOCAL/SYNET
+  pip install [-e] /PATH/TO/LOCAL/SYNET[ultra]
 
   where '-e' will allow you to make edits to your local clone after
   install.
@@ -53,7 +56,7 @@
 
   Notice that while some backends are callable this way, the backend
   may also need to be specified for other modules.  For instance,
-  synet.quantize needs to know with which backend to the model.
+  synet.quantize needs to know with which backend to load the model.
   
 ** Train
 
@@ -243,8 +246,21 @@
 
 * Contributing
 
-** Coding Style
-   While you should generally conform to pep8 and the like, an exception is made for
+** Docstring Style
+
+   Docstrings conform to numpy, scipy, and scikits docstring conventions:
+   https://numpydoc.readthedocs.io/en/latest/format.html
+
+** Imports
+
+   Only quantize.py and tflite_utils.py should import tensorflow at
+   the top of the file.  Otherwise, tensorflow modules should be
+   impored at the beginning of functions where they are used.  This
+   ensures tensorflow is only loaded when strictly necessary.
+
+   Only backends/ultralytics.py should directly import anything from
+   ultralytics, and backends.ultralytics should only be accessed by
+   obtaining the ultralytics backend from backends.get_backend().
 
 ** TODO
 
