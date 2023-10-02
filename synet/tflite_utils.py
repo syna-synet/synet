@@ -114,7 +114,7 @@ def run_interpreter(interpreter: Optional[lite.Interpreter],
 
 
 def concat_reshape(model_output: List[ndarray],
-                   task: bool,
+                   task: str,
                    xywh: Optional[bool] = False,
                    classes_to_index: Optional[bool] = True
                    ) -> ndarray:
