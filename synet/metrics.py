@@ -1,8 +1,17 @@
-from os.path import join, basename
+from argparse import ArgumentParser, Namespace
+from glob import glob
+from os import listdir, makedirs
+from os.path import join, basename, isfile, isdir, isabs
+
+from numpy import genfromtxt
+from torch import tensor, stack, cat, empty
+from ultralytics.utils.ops import xywh2xyxy
+from ultralytics.data.utils import check_det_dataset, img2label_paths
+
 
 aP_curve_points = 10000
 
-from argparse import ArgumentParser, Namespace
+
 def parse_opt() -> Namespace:
     parser = ArgumentParser()
     parser.add_argument("data_yamls", nargs="+")
@@ -15,24 +24,23 @@ def parse_opt() -> Namespace:
                         "SYNTAX: MUST BE '--precisions PREC1 PREC2 ...'")
     return parser.parse_known_args()[0]
 
-from yolov5.utils.general import xywh2xyxy
-from torch import tensor
-from numpy import genfromtxt
-def txt2xyxy(txt : str) -> tensor:
+
+def txt2xyxy(txt : str, conf=False) -> tensor:
     """Convert txt path to array of (cls, x1, y1, x2, y2[, conf])"""
     a = tensor(genfromtxt(txt, ndmin=2))
+    if not len(a):
+        return empty(0, 5+int(conf))
     a[:, 1:5] = xywh2xyxy(a[:, 1:5])
     return a
 
-from os.path import isfile, isdir, isabs
-from yolov5.utils.dataloaders import check_dataset, img2label_paths
-from glob import glob
+
 def get_gt(data_yaml : str) -> dict:
     """Obtain {"###.txt" : (Mx5 array)} dictionary mapping each data
 sample to an array of ground truths.  See get_pred().
 
     """
-    path = check_dataset(data_yaml)['val']
+    cfg = check_det_dataset(data_yaml)
+    path = cfg.get('test', cfg['val'])
     f = []
     for p in path if isinstance(path, list) else [path]:
         if isdir(p):
@@ -40,22 +48,28 @@ sample to an array of ground truths.  See get_pred().
         else:
             f += [t if isabs(t) else join(dirname(p), t)
                   for t in open(p).read().splitlines()]
-    return {basename(l): txt2xyxy(l)
+    print('getting gt')
+    return {basename(l): txt2xyxy(l, conf=False)
             for l in img2label_paths(f)}
 
-from os import listdir
+
 def get_pred(pred : str) -> dict:
     """from model output dir from validation, pred, obtain {"###.txt"
 : (Mx6 array)} mapping each data sample to array of predictions (with
 confidence) on that sample.  See get_gt().
 
     """
-    return {name : txt2xyxy(join(pred, name))
+    print('getting pred')
+    return {name : txt2xyxy(join(pred, name), conf=True)
             for name in listdir(pred)}
 
-from torch import tensor, stack, cat
-iouv=tensor([.5])
+
 from yolov5.val import process_batch
+# from torchvision.ops import box_iou
+# def validate_preds(sample_pred, sample_gt):
+#     box_iou(sample_pred)
+#     correct = zeros(len(sample_pred)).astype(bool)
+
 def get_tp_ngt(gt : dict, pred : dict) -> tuple:
     """From ground truth and prediction dictionaries (as given by
 get_gt() and get_pred() funcs resp.), generate a single Mx3 array, tp,
@@ -73,7 +87,7 @@ a true positive.
                      pred[fname][:, 0], # class
                      process_batch(pred[fname][:,[1,2,3,4,5,0]],
                                    gt[fname],
-                                   iouv
+                                   tensor([.5])
                                    ).squeeze(1)), # TP
                     -1)
               for fname in pred])
@@ -215,7 +229,7 @@ thresholds, precisions, and output dir, project.
         get_aps(tp, ngt, precisions, data_yaml, project, confs)
 
 from sys import argv
-from synet.__main__ import main
+from synet.__main__ import main as synet_main
 def run(data_yamls : list, out_dirs : [list, None], print_jobs : bool,
         precisions : list, project : [str, None], name : None):
     """Entrypoint function.  Compute metrics of model on data_yamls.
@@ -248,6 +262,7 @@ correspoinding to the labels in order.
 
     # decide output dir
     assert name is None, "--name specified by metrics.  Do not specify"
+    makedirs(project, exist_ok=True)
     if project is None:
         project = "metrics"
         argv.append(f"--project={project}")
@@ -289,7 +304,7 @@ correspoinding to the labels in order.
         print(" ".join(argv))
         if not print_jobs:
             print("starting job")
-            main()
+            synet_main()
             # main removes job type from argv, re-add it
             argv.insert(1, "val")
         # revert argv for next job
@@ -308,3 +323,6 @@ correspoinding to the labels in order.
     if not print_jobs:
         print("computing metrics")
         return metrics(data_yamls, out_dirs, precisions, project)
+
+def main():
+    run(**vars(parse_opt()))

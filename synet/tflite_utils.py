@@ -130,7 +130,7 @@ def concat_reshape(model_output: List[ndarray],
     task : {"classify", "detect", "segment", "pose"}
         The task the model performs.
     xywh : bool, default=False
-        If true, model output should be interpreted as xywh
+        If true, model output should be converted to xywh
     classes_to_index : bool, default=True
         If true, convert the classes output logits to single class index
 
@@ -161,6 +161,10 @@ def concat_reshape(model_output: List[ndarray],
         _, num_kpts, _ = kcoord.shape
     if task == "segment":
         mc, b1, b2, proto, bclass = model_output
+    if task == "detect":
+        #print([z.shape for z in model_output], [z.mean() for z in model_output])
+        b2, bclass, b1 = model_output
+        return cat((b1, b2, bclass), -1)
     _, num_classes = bclass.shape
     assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
 
@@ -169,7 +173,7 @@ def concat_reshape(model_output: List[ndarray],
     if classes_to_index:
         bclass = argmax(bclass, axis=1, keepdims=True)
 
-    # possibly convert to xyxy if not already in that format
+    # possibly convert to xywh if necessary
     if xywh:
         bbox_xy_center = (b1 + b2) / 2
         bbox_wh = b2 - b1
@@ -187,6 +191,8 @@ def concat_reshape(model_output: List[ndarray],
         return cat((bbox, conf, bclass, cat((kcoord, kpresence), -1
                                             ).reshape(-1, num_kpts * 3)),
                    axis=-1)
+    if task == 'detect':
+        return cat((bbox, conf), axis=-1)
 
 
 def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):

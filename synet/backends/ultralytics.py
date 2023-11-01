@@ -4,9 +4,11 @@ from sys import argv
 
 from cv2 import imread, imwrite
 from numpy import array
+from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
+from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
 from ultralytics.nn.modules.block import DFL as Torch_DFL, Proto as Torch_Proto
 from ultralytics.nn.modules.head import (Pose as Torch_Pose,
@@ -17,7 +19,7 @@ from ultralytics.utils.ops import non_max_suppression, process_mask
 from . import Backend as BaseBackend
 from ..base import askeras, Conv2d, ReLU, Upsample
 from ..layers import Sequential, CoBNRLU
-from ..tflite_utils import tf_run
+from ..tflite_utils import tf_run, concat_reshape
 
 
 class DFL(Torch_DFL):
@@ -260,7 +262,7 @@ class Backend(BaseBackend):
             model = self.get_model(model)
         return model.yaml["image_shape"]
 
-    def patch(self):
+    def patch(self, model_path=None):
         module = import_module("...layers", __name__)
         for name in dir(module):
             if name[0] != "_":
@@ -269,6 +271,24 @@ class Backend(BaseBackend):
         tasks.Detect = Detect
         tasks.Pose = Pose
         tasks.Segment = Segment
+        if model_path is not None and model_path.endswith('tflite'):
+            print('SyNet: model provided is tflite.  Modifying validators'
+                  ' to anticipate tflite output')
+            task_map = yolo_model.YOLO(model_path).task_map
+            for task in task_map:
+                class Val(task_map[task]['validator']):
+                    def postprocess(self, preds):
+                        return super().postprocess(tensor(concat_reshape(
+                            # concate_reshape currently expect ndarry with
+                            # batch size of 1, so remove and re-add batch
+                            # and tensorship.
+                            [p[0].numpy() for p in preds],
+                            self.args.task
+                        )[None]).permute(0, 2, 1))
+
+                task_map[task]['validator'] = Val
+            yolo_model.YOLO.task_map = task_map
+
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7):
@@ -368,9 +388,6 @@ def main():
 
     backend = Backend()
 
-    # add synet ml modules to ultralytics
-    backend.patch()
-
     # copy model from zoo if necessary
     for ind, val in enumerate(argv):
         if val.startswith("model="):
@@ -387,6 +404,12 @@ def main():
     else:
         argv.append(f"imgsz={max(backend.get_shape(model))}")
 
+    # add synet ml modules to ultralytics
+    backend.patch(model_path=model)
+
     # launch ultralytics
-    from ultralytics.yolo.cfg import entrypoint
+    try:
+        from ultralytics.cfg import entrypoint
+    except:
+        from ultralytics.yolo.cfg import entrypoint
     entrypoint()
