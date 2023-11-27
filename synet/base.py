@@ -50,7 +50,7 @@ askeras = AsKeras()
 
 class Module(Torch_Module):
     def forward(self, x):
-        if askeras.use_keras:
+        if askeras.use_keras and hasattr(self, 'as_keras'):
             return self.as_keras(x)
         return self.module(x)
 
