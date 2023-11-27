@@ -7,17 +7,22 @@ from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
+from ultralytics.engine import validator
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
+from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.nn.modules.block import DFL as Torch_DFL, Proto as Torch_Proto
 from ultralytics.nn.modules.head import (Pose as Torch_Pose,
                                          Detect as Torch_Detect,
-                                         Segment as Torch_Segment)
+                                         Segment as Torch_Segment,
+                                         Classify as Torch_Classify)
 from ultralytics.utils.ops import non_max_suppression, process_mask
+from ultralytics.utils.checks import check_imgsz
 
 from . import Backend as BaseBackend
-from ..base import askeras, Conv2d, ReLU, Upsample
+from ..base import (askeras, Conv2d, ReLU, Upsample, GlobalAvgPool,
+                    Dropout, Linear)
 from ..layers import Sequential, CoBNRLU
 from ..tflite_utils import tf_run, concat_reshape
 
@@ -283,11 +288,21 @@ class Backend(BaseBackend):
                             # batch size of 1, so remove and re-add batch
                             # and tensorship.
                             [p[0].numpy() for p in preds],
-                            self.args.task
+                            self.args.task,
+                            xywh=True
                         )[None]).permute(0, 2, 1))
 
                 task_map[task]['validator'] = Val
             yolo_model.YOLO.task_map = task_map
+            def tflite_check_imgsz(*args, **kwds):
+                kwds['stride'] = 1
+                return check_imgsz(*args, **kwds)
+            class TfliteAutoBackend(AutoBackend):
+                def __init__(self, *args, **kwds):
+                    super().__init__(*args, **kwds)
+                    self.output_details.sort(key=lambda x: x['name'])
+            validator.check_imgsz = tflite_check_imgsz
+            validator.AutoBackend = TfliteAutoBackend
 
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,

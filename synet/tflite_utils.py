@@ -102,7 +102,9 @@ def run_interpreter(interpreter: Optional[lite.Interpreter],
     interpreter.allocate_tensors()
     in_scale, in_zero = interpreter.get_input_details()[0]['quantization']
     out_scale_zero_index = [(*detail['quantization'], detail['index'])
-                            for detail in interpreter.get_output_details()]
+                            for detail in
+                            sorted(interpreter.get_output_details(),
+                                   key=lambda x:x['name'])]
     # run tflite on image
     assert interpreter.get_input_details()[0]['index'] == 0
     assert interpreter.get_input_details()[0]['dtype'] is int8
@@ -162,9 +164,7 @@ def concat_reshape(model_output: List[ndarray],
     if task == "segment":
         mc, b1, b2, proto, bclass = model_output
     if task == "detect":
-        #print([z.shape for z in model_output], [z.mean() for z in model_output])
         b2, bclass, b1 = model_output
-        return cat((b1, b2, bclass), -1)
     _, num_classes = bclass.shape
     assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
 
