@@ -244,6 +244,21 @@ class Segment(Torch_Segment, Detect):
         return Concatenate(-1)((x, mc)), p
 
 
+class Classify(Torch_Classify):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
+        super().__init__(c1, c2, k=k, s=s, p=p, g=g)
+        c_ = 1280
+        assert p is None
+        self.conv = CoBNRLU(c1, c_, k, s, groups=g)
+        self.pool = GlobalAvgPool()
+        self.drop = Dropout(p=0.0, inplace=True)
+        self.linear = Linear(c_, c2)
+    def as_keras(self, x):
+        if isinstance(x, list):
+            from keras.layers import Concatenate
+            x = Concatenate(-1)(x)
+
+
 class Backend(BaseBackend):
 
     models = {}
@@ -273,9 +288,10 @@ class Backend(BaseBackend):
             if name[0] != "_":
                 setattr(tasks, name, getattr(module, name))
         tasks.Concat = module.Cat
-        tasks.Detect = Detect
         tasks.Pose = Pose
+        tasks.Detect = Detect
         tasks.Segment = Segment
+        tasks.Classify = Classify
         if model_path is not None and model_path.endswith('tflite'):
             print('SyNet: model provided is tflite.  Modifying validators'
                   ' to anticipate tflite output')
