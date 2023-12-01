@@ -2,7 +2,7 @@
 
   The SyNet repository is a library for developing networks for
   Synaptics vision chips.  It consists of PyTorch model components
-  which can be exported to tensorflow and tflite without an
+  which can be exported to TensorFlow and tflite without an
   intermediate export backend like ONNX.  The resulting tflite files
   are clean, and respect chip memory constraints.  The aim of SyNet is
   to streamline the process of generating trained models to deploy on
@@ -20,39 +20,44 @@
 ** Current Features
 
    - Models optimized for Sabre
-   - Memory and compute efficient model components
-   - Useable with PyTorch and Tensorflow libraries
-   - Useable from the command line or python environment
+     - Memory and compute efficient model components
+   - Usable with PyTorch and TensorFlow training libraries
+   - Usable from the command line or python environment
    - In-model demosaicing export option
-     - fater than demosaic hardware block
+     - faster than demosaic hardware block
      - increases available weight memory by >2x
-   - Includes slim tflite runtime utilities
+   - Includes slim tflite runtime utilities (for demos)
    - Has the ability to support training backends
      - Main backend is Ultralytics
      - Currently supports 3/4 visions tasks from Ultralytics
+       - Object Detection
+       - Pose Estimation
+       - Instance Segmintation
      - Supports evaluating tflites through Ultralytics
      - Allows for easy setup of laptop demos
        - quickly run and view model running on webcam
    - Includes more advanced custom tflite evaluation (not through
-     Ultralytics)
+     Ultralytics).
+     - Computes combined and per-dataset statistics of model
+       performance.
 
 ** Planned 1.0 Features
 
-   - Models optimized for VS680
    - Autodownload of pretrained models
    - Support the last Ultralytics task (Classification).
 
 ** Planned for later releases
 
+   - Models optimized for VS680
    - Automatic model selection from zoo
      - Select training resolution, inference resolution, and heads.
    - Dataset manipulation tools
      - subsample and combine classes for embedded application
    - Enable arbitrary addition of box attributes to regress
 
-** Miscelaneous Tasks
+** Miscellaneous Tasks
 
-   - Investigate the demosaic descrepancy.
+   - Investigate the demosaic discrepancy.
    - clean up metrics.py.
    - remove unused files.
    - test that tflite output labeling is consistent between different
@@ -68,7 +73,7 @@
 
   In more complex setups, you should create a virtual environment:
   https://docs.python.org/3/library/venv.html.  In the following
-  examples, we include the ultralytics backend by adding '[ultra]'.
+  examples, we include the Ultralytics backend by adding '[ultra]'.
   To install via pip:
 
   #+begin_src shell
@@ -161,7 +166,7 @@
 ** Metrics
 
    SyNet's metrics code is an advanced model benchmarking tool which
-   allows the user to similtaneously score object detection on
+   allows the user to simultaneously score object detection on
    multiple datasets.  The benefit of doing multiple datasets is that
    it can find a confidence threshold by applying a precision
    threshold to the combined data.  This global operating point is
@@ -173,7 +178,7 @@
    confidences of each point are printed.  The basic usage is:
 
    #+begin_src shell
-     synet metrics DATA1.YAML DATA2.YAML... --out-dirs OUT_DIR1 OUT_DIR2... --project PLOT_DIR  --precisions PRECISON...
+     synet metrics DATA1.YAML DATA2.YAML... --out-dirs OUT_AIR1 OUT_DIR2... --project PLOT_DIR  --precisions PRECISION...
    #+end_src
 
    There must be one data yaml for each dataset, and they are expected
@@ -206,11 +211,11 @@
 
    TODO
 
-*** Converting to Keras/Tensorflow
+*** Converting to Keras/TensorFlow
 
     SyNet exists to be the glue between State of the Art training, and
     our chips.  Each model component knows how to "export itself" to a
-    keras/tensorflow model.  This done approximately like so:
+    Keras/TensorFlow model.  This done approximately like so:
 
     #+begin_src python
       from keras import Input, Model
@@ -346,10 +351,10 @@
 
 ** Imports
 
-   Only quantize.py and tflite_utils.py should import tensorflow at
-   the top of the file.  Otherwise, tensorflow modules should be
-   impored at the beginning of functions where they are used.  This
-   ensures tensorflow is only loaded when strictly necessary.
+   Only quantize.py and tflite_utils.py should import TensorFlow at
+   the top of the file.  Otherwise, TensorFlow modules should be
+   imported at the beginning of functions where they are used.  This
+   ensures TensorFlow is only loaded when strictly necessary.
 
    Only backends/ultralytics.py should directly import anything from
    ultralytics, and backends.ultralytics should only be accessed by
