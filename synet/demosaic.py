@@ -20,8 +20,7 @@ class Demosaic(Module):
         # the kxk kernel into the first or last k rows/columns of the
         # (k+1)x(k+1) generated kernel.
         kslice = slice(None, -1), slice(1, None)
-        weight = zeros(4, 3, self.k+1, self.k+1,
-                       requires_grad=False)
+        weight = zeros(4, 3, self.k+1, self.k+1, requires_grad=False)
 
         # Set values for which the bayer image IS ground truth.
         # +self.k//2 because 2x2 bayer is centered in the (k+1)x(k+1)
