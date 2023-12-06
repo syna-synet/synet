@@ -11,16 +11,13 @@ layers.py:
 from typing import Tuple, Union, Optional
 
 from torch import cat as torch_cat, minimum, tensor, no_grad
-from torch.nn import (Module as Torch_Module,
+from torch.nn import (Module,
                       Conv2d as Torch_Conv2d,
                       BatchNorm2d as Torch_Batchnorm,
                       ModuleList as Torch_Modulelist,
                       ReLU as Torch_ReLU,
                       ConvTranspose2d as Torch_ConvTranspose2d,
-                      Upsample as Torch_Upsample,
-                      AdaptiveAvgPool2d as Torch_AdaptiveAvgPool,
-                      Dropout as Torch_Dropout,
-                      Linear as Torch_Linear)
+                      Upsample as Torch_Upsample)
 from torch.nn.functional import pad
 
 
@@ -46,13 +43,6 @@ keras.  See test.py and quantize.py for examples.
 
 
 askeras = AsKeras()
-
-
-class Module(Torch_Module):
-    def forward(self, x):
-        if askeras.use_keras and hasattr(self, 'as_keras'):
-            return self.as_keras(x)
-        return self.module(x)
 
 
 class Conv2d(Module):
@@ -196,20 +186,25 @@ class ConvTranspose2d(Module):
         self.stride = stride
         self.padding = "valid" if padding == 0 else "same"
         self.use_bias = bias
-        self.module = Torch_ConvTranspose2d(in_channels, out_channels,
+        self.conv = Torch_ConvTranspose2d(in_channels, out_channels,
                                           kernel_size, stride,
                                           padding, bias=bias)
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return self.conv(x)
 
     def as_keras(self, x):
         from keras.layers import Conv2DTranspose as Keras_ConvTrans
         conv = Keras_ConvTrans(self.out_channels, self.kernel_size, self.stride,
                                self.padding, use_bias=self.use_bias)
         conv.build(x.shape)
-        if isinstance(self.module, Torch_ConvTranspose2d):
-            tconv = self.module
+        if isinstance(self.conv, Torch_ConvTranspose2d):
+            tconv = self.conv
         else:
             # for NNI compatibility
-            tconv = self.module.module
+            tconv = self.conv.module
         weight = tconv.weight.detach().numpy().transpose(2, 3, 1, 0)
         conv.set_weights([weight, tconv.bias.detach().numpy()]
                          if self.use_bias else
@@ -274,17 +269,22 @@ class BatchNorm(Module):
         super().__init__()
         self.epsilon = epsilon
         self.momentum = momentum
-        self.module = Torch_Batchnorm(features, epsilon, momentum)
+        self.batchnorm = Torch_Batchnorm(features, epsilon, momentum)
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return self.batchnorm(x)
 
     def as_keras(self, x):
         from keras.layers import BatchNormalization as Keras_Batchnorm
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
         batchnorm.build(x.shape)
-        if isinstance(self.module, Torch_Batchnorm):
-            bn = self.module
+        if isinstance(self.batchnorm, Torch_Batchnorm):
+            bn = self.batchnorm
         else:
-            bn = self.module.module
+            bn = self.batchnorm.module
         weights = bn.weight.detach().numpy()
         bias = bn.bias.detach().numpy()
         running_mean = bn.running_mean.detach().numpy()
@@ -304,7 +304,12 @@ class Upsample(Module):
         super().__init__()
         self.scale_factor = scale_factor
         self.mode = mode
-        self.module = Torch_Upsample(scale_factor=scale_factor, mode=mode)
+        self.upsample = Torch_Upsample(scale_factor=scale_factor, mode=mode)
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return self.upsample(x)
 
     def as_keras(self, x):
         from keras.layers import UpSampling2D
@@ -327,39 +332,3 @@ class Sequential(Module):
         if isinstance(i, int):
             return self.ml[i]
         return Sequential(*self.ml[i])
-
-
-class GlobalAvgPool(Module):
-    def __init__(self):
-        super().__init__()
-        self.module = Torch_AdaptiveAvgPool(1)
-    def as_keras(self, x):
-        from keras.layers import GlobalAveragePooling2D
-        return GlobalAveragePooling2D(keepdims=True)(x)
-
-
-class Dropout(Module):
-    def __init__(self, p=0, inplace=False):
-        super().__init__()
-        self.p = p
-        self.module = Torch_Dropout(p, inplace=inplace)
-    def as_keras(self, x):
-        from keras.layers import Dropout
-        return Dropout(self.p)(x, training=askeras.kwds["train"])
-
-
-class Linear(Module):
-    def __init__(self, in_c, out_c, bias=True):
-        super().__init__()
-        self.use_bias = bias
-        self.module = Torch_Linear(in_c, out_c, bias)
-    def as_keras(self, x):
-        from keras.layers import Dense
-        out_c, in_c = self.module.weight.shape
-        params = [self.module.weight.detach().numpy().transpose(1, 0 )]
-        if self.use_bias:
-            params.append(self.module.bias.detach().numpy())
-        dense = Dense(out_c, use_bias=self.use_bias)
-        dense.build(x.shape[1:])
-        dense.set_weights(params)
-        return dense(x)
