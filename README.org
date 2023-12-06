@@ -54,20 +54,8 @@
    - Dataset manipulation tools
      - subsample and combine classes for embedded application
    - Enable arbitrary addition of box attributes to regress
-
-** Miscellaneous Tasks
-
-   - Investigate the demosaic discrepancy.
-   - clean up metrics.py.
-   - remove unused files.
-   - test that tflite output labeling is consistent between different
-     head numbers.
-   - Revise comments and docstrings.
-   - Need chip-specific export
-     - functionality should go in synet/<chip>.py
-   - Decide if base.Grayscale grayscale method should be improved
-     - possibly change default Grayscale behavior
-     - support variable channel count in backend
+     - age, orientation (pitch, yaw, roll)
+   - Complete miscelaneous tasks (see corresponding Gitlab milestone)
 
 * Installation
 
