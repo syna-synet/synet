@@ -1,6 +1,6 @@
 from .base import Module, Conv2d, Sequential
 
-from torch import zeros, tensor, arange, where
+from torch import zeros, tensor, arange, where, float32
 
 
 class Demosaic(Module):
@@ -87,18 +87,21 @@ class Demosaic(Module):
                             [ 0  , 0  , 2  , 0  , 0  ],
                             [-1  , 2  , 4  , 2  ,-1  ],
                             [ 0  , 0  , 2  , 0  , 0  ],
-                            [ 0  , 0  ,-1  , 0  , 0  ]])
+                            [ 0  , 0  ,-1  , 0  , 0  ]],
+                           dtype=float32)
         # read "GRB" as green bayer location in red row, blue column.
         self.RatGRB = tensor([[ 0  , 0  , 0.5, 0  , 0  ],
                               [ 0  ,-1  , 0  ,-1  , 0  ],
                               [-1  , 4  , 5  , 4  ,-1  ],
                               [ 0  ,-1  , 0  ,-1  , 0  ],
-                              [ 0  , 0  , 0.5, 0  , 0  ]])
+                              [ 0  , 0  , 0.5, 0  , 0  ]],
+                           dtype=float32)
         self.RatB = tensor([[ 0  , 0  ,-1.5, 0  , 0  ],
                             [ 0  , 2  , 0  , 2  , 0  ],
                             [-1.5, 0  , 6  , 0  ,-1.5],
                             [ 0  , 2  , 0  , 2  , 0  ],
-                            [ 0  , 0  ,-1.5, 0  , 0  ]])
+                            [ 0  , 0  ,-1.5, 0  , 0  ]],
+                           dtype=float32)
         self.k = 5
         self.basic_init()
 
