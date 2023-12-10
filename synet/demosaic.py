@@ -113,6 +113,9 @@ class Demosaic(Module):
         self.BatGRB = self.RatGBR
         self.BatR = self.RatB
 
+    def forward(self, x):
+        return self.module(x)
+
 def reshape_conv(old_conv):
     assert (all(k in (3, 4) for k in old_conv.kernel_size)
             and old_conv.stride == 2
