@@ -245,7 +245,7 @@ class Segment(Torch_Segment, Detect):
 
 
 class Classify(Torch_Classify):
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
+    def __init__(self, junk, c1, c2, k=1, s=1, p=None, g=1):
         super().__init__(c1, c2, k=k, s=s, p=p, g=g)
         c_ = 1280
         assert p is None
@@ -253,10 +253,16 @@ class Classify(Torch_Classify):
         self.pool = GlobalAvgPool()
         self.drop = Dropout(p=0.0, inplace=True)
         self.linear = Linear(c_, c2)
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return super().forward(x)
     def as_keras(self, x):
+        from keras.layers import Concatenate, Flatten, Softmax
         if isinstance(x, list):
-            from keras.layers import Concatenate
             x = Concatenate(-1)(x)
+        x = self.linear(self.drop(Flatten()(self.pool(self.conv(x)))))
+        return x if self.training else Softmax()(x)
 
 
 class Backend(BaseBackend):
@@ -428,15 +434,15 @@ def main():
     else:
         raise ValueError("no model specified")
 
+    # add synet ml modules to ultralytics
+    backend.patch(model_path=model)
+
     # add imgsz if not explicitly given
     for val in argv:
         if val.startswith("imgsz="):
             break
     else:
         argv.append(f"imgsz={max(backend.get_shape(model))}")
-
-    # add synet ml modules to ultralytics
-    backend.patch(model_path=model)
 
     # launch ultralytics
     try:
