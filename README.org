@@ -29,10 +29,11 @@
    - Includes slim tflite runtime utilities (for demos)
    - Has the ability to support training backends
      - Main backend is Ultralytics
-     - Currently supports 3/4 visions tasks from Ultralytics
+     - Currently supports all core visions tasks from Ultralytics
        - Object Detection
        - Pose Estimation
        - Instance Segmintation
+       - Classification
      - Supports evaluating tflites through Ultralytics
      - Allows for easy setup of laptop demos
        - quickly run and view model running on webcam
@@ -44,7 +45,6 @@
 ** Planned 1.0 Features
 
    - Autodownload of pretrained models
-   - Support the last Ultralytics task (Classification).
 
 ** Planned for later releases
 
@@ -53,9 +53,15 @@
      - Select training resolution, inference resolution, and heads.
    - Dataset manipulation tools
      - subsample and combine classes for embedded application
+     - camera augmentations
    - Enable arbitrary addition of box attributes to regress
      - age, orientation (pitch, yaw, roll)
    - Complete miscelaneous tasks (see corresponding Gitlab milestone)
+   - Mixed precision support
+
+** Future Research
+
+   - Hugging Face backend integration
 
 * Installation
 
