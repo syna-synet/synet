@@ -39,7 +39,7 @@ class InvertedResidual(Module):
     """
 
     def __init__(self, in_channels, expansion_factor,
-                 out_channels=None, stride=1):
+                 out_channels=None, stride=1, kernel_size=3):
         """This inverted residual takes in_channels to
         in_channels*expansion_factor with a 3x3 convolution.  Then
         after a batchnorm and ReLU, the activations are taken back
@@ -53,7 +53,8 @@ class InvertedResidual(Module):
         hidden = int(in_channels * expansion_factor)
         self.layers = Sequential(Conv2d(in_channels,
                                         out_channels=hidden,
-                                        kernel_size=3, stride=stride),
+                                        kernel_size=kernel_size,
+                                        stride=stride),
                                  BatchNorm(hidden),
                                  ReLU(6),
                                  Conv2d(in_channels=hidden,

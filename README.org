@@ -29,10 +29,11 @@
    - Includes slim tflite runtime utilities (for demos)
    - Has the ability to support training backends
      - Main backend is Ultralytics
-     - Currently supports 3/4 visions tasks from Ultralytics
+     - Currently supports all core visions tasks from Ultralytics
        - Object Detection
        - Pose Estimation
        - Instance Segmintation
+       - Classification
      - Supports evaluating tflites through Ultralytics
      - Allows for easy setup of laptop demos
        - quickly run and view model running on webcam
@@ -44,7 +45,6 @@
 ** Planned 1.0 Features
 
    - Autodownload of pretrained models
-   - Support the last Ultralytics task (Classification).
 
 ** Planned for later releases
 
@@ -53,21 +53,15 @@
      - Select training resolution, inference resolution, and heads.
    - Dataset manipulation tools
      - subsample and combine classes for embedded application
+     - camera augmentations
    - Enable arbitrary addition of box attributes to regress
+     - age, orientation (pitch, yaw, roll)
+   - Complete miscelaneous tasks (see corresponding Gitlab milestone)
+   - Mixed precision support
 
-** Miscellaneous Tasks
+** Future Research
 
-   - Investigate the demosaic discrepancy.
-   - clean up metrics.py.
-   - remove unused files.
-   - test that tflite output labeling is consistent between different
-     head numbers.
-   - Revise comments and docstrings.
-   - Need chip-specific export
-     - functionality should go in synet/<chip>.py
-   - Decide if base.Grayscale grayscale method should be improved
-     - possibly change default Grayscale behavior
-     - support variable channel count in backend
+   - Hugging Face backend integration
 
 * Installation
 
@@ -197,6 +191,7 @@
      synet ultralytics val model=/PATH/TO/BEST.TFLITE split=test imgsz=HEIGHT,WIDTH data=DATA1.YAML task=detect save_txt=True save_conf=True
    #+end_src
 
+   See notes on validation in the ultralytics backend section below.
    For more information on the metrics code see:
 
    #+begin_src shell
@@ -280,11 +275,9 @@
    here, but for any further questions about Ultralytics, you should
    consult the Ultralytics github page and documentation:
    - [[https://github.com/ultralytics/ultralytics]]
-   - https://docs.ultralytics.com/
+   - https://docs.ultralytics.com
 
 *** Train
-
-    TODO
 
     The SyNet repository provides a thin wrapper around Ultralytics
     training for simple training situations.  The basic usage is
@@ -294,10 +287,10 @@
     #+end_src
 
     For instance, if you want to train a person keypoint model, you
-    can train a qVGA (320x240) model for the sabre chip with
+    can train a VGA (640x480) model for the sabre chip with.
 
     #+begin_src shell
-      synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pose.yaml
+      synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
     #+end_src
 
     This will put all output at ./runs/train/exp.  See "name",
@@ -309,25 +302,31 @@
     ln -s /mnt/ml_data/datasets/ultralytics_autodownload ./datasets
 
     This makes a symlink at ./datasets which points to my datasets
-    directory.  Similarly, if you would like to train a VGA (480x640)
-    model (for instance, for data with much smaller objects), you
-    could run:
+    directory.
 
-    synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
-
-    This will place the best weights at
-    runs/train/pose/weights/best.pt.  Each model yaml knows what
-    resolution is compatible with Sabre per memory constraints, and so
-    uses that resolution by default for training.  The resolution can
-    be overridden, with imgsz=..., and all training images will be
-    scaled according to this resolution, though quantizing will still
-    default to the compatible resolution.  "model=" is actually
-    modified, if the file does not exist, to point to a model in the
-    SyNet model zoo.
+    For any further information, see the ultralytics documentation for
+    training: https://docs.ultralytics.com/modes/train
 
 *** Val
 
-    TODO
+    Validation will be performed during training, but only on the
+    validation set, and only with the floating point (non-quantized)
+    model.  In order to use ultralytics to run validation on your
+    quantized (.tflite) model, you will need to specify the model, the
+    task, the dataset split, and the canvas size.  Additionally, if
+    you want to use SyNet's advanced metrics tools, you should be sure
+    to cache the results of model evaluation by passing 'save_txt' and
+    'save_conf' like so:
+
+    #+begin_src shell
+      synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True imgsz=640,480
+    #+end_src
+
+    This should place the results of model evaluation in
+    runs/val/detect, which you can point to when calling "synet
+    metrcis" (see above).  For more information, see the ultralytics
+    documentation for validation:
+    https://docs.ultralytics.com/modes/val
 
 *** Predict
 
