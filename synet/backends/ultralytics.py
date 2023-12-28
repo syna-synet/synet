@@ -4,20 +4,27 @@ from sys import argv
 
 from cv2 import imread, imwrite
 from numpy import array
+from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
+from ultralytics.engine import validator
 from ultralytics.engine.results import Results
+from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
+from ultralytics.nn.autobackend import AutoBackend
 from ultralytics.nn.modules.block import DFL as Torch_DFL, Proto as Torch_Proto
 from ultralytics.nn.modules.head import (Pose as Torch_Pose,
                                          Detect as Torch_Detect,
-                                         Segment as Torch_Segment)
+                                         Segment as Torch_Segment,
+                                         Classify as Torch_Classify)
 from ultralytics.utils.ops import non_max_suppression, process_mask
+from ultralytics.utils.checks import check_imgsz
 
 from . import Backend as BaseBackend
-from ..base import askeras, Conv2d, ReLU, Upsample
+from ..base import (askeras, Conv2d, ReLU, Upsample, GlobalAvgPool,
+                    Dropout, Linear)
 from ..layers import Sequential, CoBNRLU
-from ..tflite_utils import tf_run
+from ..tflite_utils import tf_run, concat_reshape
 
 
 class DFL(Torch_DFL):
@@ -237,6 +244,21 @@ class Segment(Torch_Segment, Detect):
         return Concatenate(-1)((x, mc)), p
 
 
+class Classify(Torch_Classify):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1):
+        super().__init__(c1, c2, k=k, s=s, p=p, g=g)
+        c_ = 1280
+        assert p is None
+        self.conv = CoBNRLU(c1, c_, k, s, groups=g)
+        self.pool = GlobalAvgPool()
+        self.drop = Dropout(p=0.0, inplace=True)
+        self.linear = Linear(c_, c2)
+    def as_keras(self, x):
+        if isinstance(x, list):
+            from keras.layers import Concatenate
+            x = Concatenate(-1)(x)
+
+
 class Backend(BaseBackend):
 
     models = {}
@@ -260,15 +282,44 @@ class Backend(BaseBackend):
             model = self.get_model(model)
         return model.yaml["image_shape"]
 
-    def patch(self):
+    def patch(self, model_path=None):
         module = import_module("...layers", __name__)
         for name in dir(module):
             if name[0] != "_":
                 setattr(tasks, name, getattr(module, name))
         tasks.Concat = module.Cat
-        tasks.Detect = Detect
         tasks.Pose = Pose
+        tasks.Detect = Detect
         tasks.Segment = Segment
+        tasks.Classify = Classify
+        if model_path is not None and model_path.endswith('tflite'):
+            print('SyNet: model provided is tflite.  Modifying validators'
+                  ' to anticipate tflite output')
+            task_map = yolo_model.YOLO(model_path).task_map
+            for task in task_map:
+                class Val(task_map[task]['validator']):
+                    def postprocess(self, preds):
+                        return super().postprocess(tensor(concat_reshape(
+                            # concate_reshape currently expect ndarry with
+                            # batch size of 1, so remove and re-add batch
+                            # and tensorship.
+                            [p[0].numpy() for p in preds],
+                            self.args.task,
+                            xywh=True
+                        )[None]).permute(0, 2, 1))
+
+                task_map[task]['validator'] = Val
+            yolo_model.YOLO.task_map = task_map
+            def tflite_check_imgsz(*args, **kwds):
+                kwds['stride'] = 1
+                return check_imgsz(*args, **kwds)
+            class TfliteAutoBackend(AutoBackend):
+                def __init__(self, *args, **kwds):
+                    super().__init__(*args, **kwds)
+                    self.output_details.sort(key=lambda x: x['name'])
+            validator.check_imgsz = tflite_check_imgsz
+            validator.AutoBackend = TfliteAutoBackend
+
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7):
@@ -368,9 +419,6 @@ def main():
 
     backend = Backend()
 
-    # add synet ml modules to ultralytics
-    backend.patch()
-
     # copy model from zoo if necessary
     for ind, val in enumerate(argv):
         if val.startswith("model="):
@@ -387,6 +435,12 @@ def main():
     else:
         argv.append(f"imgsz={max(backend.get_shape(model))}")
 
+    # add synet ml modules to ultralytics
+    backend.patch(model_path=model)
+
     # launch ultralytics
-    from ultralytics.yolo.cfg import entrypoint
+    try:
+        from ultralytics.cfg import entrypoint
+    except:
+        from ultralytics.yolo.cfg import entrypoint
     entrypoint()

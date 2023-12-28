@@ -30,6 +30,8 @@ def t_actv_to_k_helper(actv):
         tp = 0, 2, 3, 1
     elif len(actv.shape) == 3:
         tp = 0, 2, 1
+    elif len(actv.shape) == 2:
+        tp = 0, 1
     return actv.detach().numpy().transpose(*tp)
 
 
@@ -76,7 +78,7 @@ difference between all configurations.
     max_diff = max(validate_layer(layer,
                                   [rand(batch_size, in_channels, *s)*2-1
                                    for s in shape]
-                                  if isinstance(shape[0], tuple)
+                                  if len(shape) and isinstance(shape[0], tuple)
                                   else rand(batch_size, in_channels, *shape)*2-1,
                                   **akwds)
                    for shape in shapes)
@@ -114,6 +116,26 @@ def test_upsample():
     for scale_factor in 1, 2, 3:
         for mode in Upsample.allowed_modes:
             validate(Upsample(scale_factor, mode))
+
+
+def test_globavgpool():
+    from synet.base import GlobalAvgPool
+    validate(GlobalAvgPool())
+
+
+def test_dropout():
+    from synet.base import Dropout
+    for p in 0.0, 0.5, 1.0:
+        for inplace in True, False:
+            layer = Dropout(p, inplace=inplace)
+            layer.eval()
+            validate(layer)
+
+
+def test_linear():
+    from synet.base import Linear
+    for bias in True, False:
+        validate(Linear(IN_CHANNELS, OUT_CHANNELS, bias), shapes=[()])
 
 
 def test_batchnorm():
@@ -164,4 +186,11 @@ def test_ultralytics_segment():
                      ((12, 12), (6, 6))],
              xywh=True)
 
+def test_ultralytics_classify():
+    from synet.backends.ultralytics import Classify
+    layer = Classify(c1=IN_CHANNELS, c2=OUT_CHANNELS)
+    layer.eval()
+    layer.export = True
+    layer.format = 'tflite'
+    validate(layer)
 

@@ -111,6 +111,11 @@ class Conv2d(Module):
             pad(x, (rx - bx - bcx, rx - bx, ry - by - bcy, ry - by)))
 
     def as_keras(self, x):
+        if askeras.kwds.get('demosaic'):
+            from .demosaic import Demosaic, reshape_conv
+            demosaic = Demosaic(*askeras.kwds['demosaic'].split('-'))
+            del askeras.kwds['demosaic']
+            return reshape_conv(self)(demosaic(x))
         from keras.layers import Conv2D as Keras_Conv2d
         assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
         conv = Keras_Conv2d(filters=self.out_channels,

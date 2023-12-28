@@ -1,272 +1,361 @@
 * Introduction
 
   The SyNet repository is a library for developing networks for
-  Synaptics vision chips.  It consists of model components which exist
-  as pytorch modules which can be exported to tensorflow lite without
-  an intermediate export backend like ONNX.  The resulting tflite
-  files are clean, with high level modules crafted to yeild tflite
-  compenet configurations which properly contend with chip memory
-  constraints.
+  Synaptics vision chips.  It consists of PyTorch model components
+  which can be exported to TensorFlow and tflite without an
+  intermediate export backend like ONNX.  The resulting tflite files
+  are clean, and respect chip memory constraints.  The aim of SyNet is
+  to streamline the process of generating trained models to deploy on
+  Synaptics chips, for internal and external use.
 
-  In addition to model components, SyNet also offers a thin wrapper
-  around the Ultralytics training repository which allows you to run
-  Ultralytics with models defined exclusively with SyNet layers.  Any
-  Ultralytics function (train, predict, val, etc.) will run through
-  SyNet with SyNet modules.  The basic syntax is:
+  In addition to model definitions, analysis, data manipulation, and
+  data analysis tools, SyNet also aims to support several "backends".
+  For now, the only backend supported in Ultralytics.  Ultralytics
+  provides a suit of tools for training vision models and visualizing
+  those models.  Using Ultralytics as a backend, you can generate
+  trained vision models optimized for our chips.
 
-  synet ultralytics [ultralytics ARGS]...
+* Roadmap
 
-  However, you should use SyNet's quantize instead of Ultralytics'
-  export to convert to a quantized tflite model for deployment (see
-  [[Quantize]]).  We give some examples/explanations for basic Ultralytics
-  usage here, but for any further questions about Ultralytics, you
-  should consult the Ultralytics github page:
-  [[https://github.com/ultralytics/ultralytics]]
+** Current Features
+
+   - Models optimized for Sabre
+     - Memory and compute efficient model components
+   - Usable with PyTorch and TensorFlow training libraries
+   - Usable from the command line or python environment
+   - In-model demosaicing export option
+     - faster than demosaic hardware block
+     - increases available weight memory by >2x
+   - Includes slim tflite runtime utilities (for demos)
+   - Has the ability to support training backends
+     - Main backend is Ultralytics
+     - Currently supports 3/4 visions tasks from Ultralytics
+       - Object Detection
+       - Pose Estimation
+       - Instance Segmintation
+     - Supports evaluating tflites through Ultralytics
+     - Allows for easy setup of laptop demos
+       - quickly run and view model running on webcam
+   - Includes more advanced custom tflite evaluation (not through
+     Ultralytics).
+     - Computes combined and per-dataset statistics of model
+       performance.
+
+** Planned 1.0 Features
+
+   - Autodownload of pretrained models
+   - Support the last Ultralytics task (Classification).
+
+** Planned for later releases
+
+   - Models optimized for VS680
+   - Automatic model selection from zoo
+     - Select training resolution, inference resolution, and heads.
+   - Dataset manipulation tools
+     - subsample and combine classes for embedded application
+   - Enable arbitrary addition of box attributes to regress
+
+** Miscellaneous Tasks
+
+   - Investigate the demosaic discrepancy.
+   - clean up metrics.py.
+   - remove unused files.
+   - test that tflite output labeling is consistent between different
+     head numbers.
+   - Revise comments and docstrings.
+   - Need chip-specific export
+     - functionality should go in synet/<chip>.py
+   - Decide if base.Grayscale grayscale method should be improved
+     - possibly change default Grayscale behavior
+     - support variable channel count in backend
 
 * Installation
 
   In more complex setups, you should create a virtual environment:
-  https://docs.python.org/3/library/venv.html
-
-  In the following examples, we include the ultralytics backend.  For
-  a core SyNet install, omit the '[ultra]' below.
-
+  https://docs.python.org/3/library/venv.html.  In the following
+  examples, we include the Ultralytics backend by adding '[ultra]'.
   To install via pip:
 
-  pip install git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]
+  #+begin_src shell
+    pip install git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]
+  #+end_src
 
-  or if you have cloned to a local repository:
+  or if you have cloned to a local copy of the repository:
 
-  pip install [-e] /PATH/TO/LOCAL/SYNET[ultra]
+  #+begin_src shell
+    pip install [-e] /PATH/TO/LOCAL/SYNET[ultra]
+  #+end_src
 
   where '-e' will allow you to make edits to your local clone after
   install.
 
-* Shell API
+* Quickstart
+
+  In the following, I give a simple example of how one can train a model on COCO, quantize to tflite, and benchmark that tflite on a custom dataset specified by a user's CUSTOM_DATA.yaml.  First, train the model:
+  #+begin_src shell
+    synet ultralytics train model=sabre-detect-vga.yaml data=coco.yaml
+  #+end_src
+  Quantize the trained model.
+  #+begin_src shell
+    synet quantize --backend ultralytics --tflite runs/train/pose/weights/best.pt --data /path/to/coco-pose.yaml --kwds demosaic=malvar-bggr -c 1
+  #+end_src
+  Evaluate that trained model on your custom data (should be the "test" split).
+  #+begin_src shell
+    synet ultralytics val model=runs/train/pose/weights/best.tflite split=test task=detect save_txt=True save_conf=True
+  #+end_src
+  And finally generate metrics for the model performance, especially at the .95 precision operating point.
+  #+begin_src shell
+    synet metrics CUSTOM_DATA.YAML --out-dirs runs/pose/val --project runs/pose/val --precision .95
+  #+end_src
+
+  You could do the same in Python as follows:  TODO
+
+* Core Shell API
 
   The basic syntax for running SyNet from a shell is:
 
-  synet [entrypoint] [entrypoint specific args]
+  #+begin_src shell
+    synet [entrypoint] [entrypoint specific args]
+  #+end_src
 
   Where entrypoint can be a native SyNet module, or a backend like
   ultralytics.  For instance:
 
-  synet ultralytics train ...
-  synet quantize --backend ultralytics ...
+  #+begin_src shell
+    synet ultralytics train ...
+    synet quantize --backend ultralytics ...
+  #+end_src
 
   Notice that while some backends are callable this way, the backend
   may also need to be specified for other modules.  For instance,
   synet.quantize needs to know with which backend to load the model.
+
+  For information on training/visualizing models, see the section on
+  backends below.
   
-** Train
-
-   The SyNet repository provides a thin wrapper around Ultralytics
-   training for simple training situations.  The basic usage is
-
-   synet ultralytics [OTHER ULTRALYTICS ARGS]
-
-   For instance, if you want to train a person keypoint model, you can
-   train a qVGA (320x240) model for the sabre chip with
-
-   synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pose.yaml
-
-   This will put all output at ./runs/train/exp.  See name project and
-   exists-ok in the Ultralytics docs for changing this.  The above
-   command also tries to download the coco dataset to ./datasets.  The
-   best way I have found to deal with this is with a symlink to my
-   desired location.
-
-   ln -s /mnt/ml_data/datasets/ultralytics_autodownload ./datasets
-
-   This makes a symlink at ./datasets which points to my datasets
-   directory.  Similarly, if you would like to train a VGA (480x640)
-   model (for instance, for data with much smaller objects), you could
-   run:
-
-   synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
-
-   This will place the best weights at runs/train/pose/weights/best.pt.
-   Each model yaml knows what resolution is compatible with Sabre per
-   memory constraints, and so uses that resolution by default for
-   training.  The resolution can be overridden, with imgsz=..., and
-   all training images will be scaled according to this resolution,
-   though quantizing will still default to the compatible resolution.
-   "model=" is actually modified, if the file does not exist, to point
-   to a model in the SyNet model zoo.
-
 ** Quantize
 
-   The SyNet repository also includes the ability to quantize models
+   The SyNet repository includes the ability to quantize models
 
-   synet quantize --backend BACKEND --weights MODEL_PT_SAVE --data REP_DATA
+   #+begin_src shell
+     synet quantize --backend BACKEND --weights MODEL_PT_SAVE --data REP_DATA
+   #+end_src
 
    For instance, running:
 
-   synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML
+   #+begin_src shell
+     synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML
+   #+end_src
 
    will create a tflite at ./exp/weights/best.tflite.  You may also
    specify a model yaml like so:
 
-   synet quantize --backend ultralytics --cfg sabre-keypoint-qvga.yaml
+   #+begin_src shell
+     synet quantize --backend ultralytics --cfg sabre-keypoint-qvga.yaml
+   #+end_src
 
-   This will place a quantized model at ./model.tflite.  This will let
-   you inspect the architecture, though it will not be a trained model,
-   so the model output will be useless.
+   This will place a quantized model at ./sabre-keypoint-qvga.tflite.
+   This will let you inspect the architecture, though it will not be a
+   trained model, so the model output will be useless.  For more
+   information see:
 
-** Visualize
+   #+begin_src shell
+     synet quantize --help
+   #+end_src
 
-* Python API
+** Metrics
 
-  SyNet exists to be the glue between State of the Art training, and
-  our chips.  Each model component knows how to "export itself" to a
-  keras/tensorflow model.  This done approximately like so:
+   SyNet's metrics code is an advanced model benchmarking tool which
+   allows the user to simultaneously score object detection on
+   multiple datasets.  The benefit of doing multiple datasets is that
+   it can find a confidence threshold by applying a precision
+   threshold to the combined data.  This global operating point is
+   then applied to each dataset individually.  Plots are generated
+   showing the mAP curves for each class, each dataset, the combined
+   dataset, and combined classes.  Additionally, on each curve, the
+   global precision point, the dataset precision point, and the .5
+   confidence point are plotted.  The exact coordinates and
+   confidences of each point are printed.  The basic usage is:
 
-  from keras import Input, Model
-  from synet.base import askeras
-  inp = Input(...)
-  with askeras:
-      kmodel = Model(inp, model(inp))
+   #+begin_src shell
+     synet metrics DATA1.YAML DATA2.YAML... --out-dirs OUT_AIR1 OUT_DIR2... --project PLOT_DIR  --precisions PRECISION...
+   #+end_src
 
-  (For a more complex example, see quantize.py.)
+   There must be one data yaml for each dataset, and they are expected
+   to be in Ultralytics format:
+   https://docs.ultralytics.com/datasets/?h=data#steps-to-contribute-a-new-dataset
 
-  So long as only SyNet components actually operate on the model
-  input, this method will work.  SyNet integrates with other libraries
-  as much as possible, but can be used stand-alone in other python
-  project as a library itself.
+   If present, the 'test' data split is used.  Otherwise, the 'val'
+   split is used for each dataset.  The metrics code does not actually
+   run the model, but instead uses the output from running the model
+   via a different code, hence the "OUT_DIR" is the output directory
+   of that other code.  This may be changed in the future, but
+   currently you should populate the out dir with the only supported
+   backend:
 
-** Creating Custom Model Architectures
+   #+begin_src shell
+     synet ultralytics val model=/PATH/TO/BEST.TFLITE split=test imgsz=HEIGHT,WIDTH data=DATA1.YAML task=detect save_txt=True save_conf=True
+   #+end_src
 
-*** Profiling
-   
-** Custom Training
+   For more information on the metrics code see:
 
-*** YOLOv5 with Data Subset
+   #+begin_src shell
+     synet metrics --help
+   #+end_src
 
-    The first step to do to train on a custom dataset is to get the
-    data in the YOLO format.  See:
-    [[https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data]].
-    Generally, datasets have multiple classes.  However, tiny neural
-    network models need to be much more specialized, so you generally
-    train on only a few classes.  To this end, SyNet provides one
-    additional convenience function to create a data subset with the
-    desired classes.  However, it only supports datasets where the
-    splits are specified as a directory, not as a text file or list
-    (the most common, simple use case).  Suppose you have a dataset
-    specified at OLD_YAML with the following content:
+* Core Python API
 
-    path: /data
-    train: images/train
-    val: images/val
-    names:
-      0: bicycle
-      1: car
-      2: bus
+  TODO
 
-    If you create a new yaml at NEW_YAML with the following content:
+** Base Layers
 
-    path: /data
-    train: images/train_subset
-    val: images/val_subset
-    names:
-      0: bus
+   TODO
 
-    then you can run
+*** Converting to Keras/TensorFlow
 
-    python -m synet data_subset [--max-bg-ratio MAX_BG_RATIO] OLD_YAML NEW_YAML
+    SyNet exists to be the glue between State of the Art training, and
+    our chips.  Each model component knows how to "export itself" to a
+    Keras/TensorFlow model.  This done approximately like so:
 
-    Then you can specify --data NEW_YAML for future trainings.  To
-    explain, this operation will create new directories at
-    /data/images/train_subset, /data/images/val_subset,
-    /data/labels/train_subset, and /data/labels/val_subset.  The new
-    images directories will be filled with symlinks to images from the
-    original, corresponding, directories, and the new labels
-    directories will be filled with modified labels with pruned
-    classes missing (e.g. car) and kept classes reassigned (2 -> 1).
-    Additionally, if --max-bg-ratio is specified, then no more than
-    MAX_BG_RATIO of the output dataset will be background samples
-    (background samples pruned randomly).  If every sample should have
-    at least one label, then set --max-bg-ratio to 0 (not
-    recommended).
+    #+begin_src python
+      from keras import Input, Model
+      from synet.base import askeras
+      model = ...
+      inp = Input(...)
+      with askeras:
+          kmodel = Model(inp, model(inp))
+    #+end_src
 
-*** From modified YOLOv5 code
+    This method works so long as only SyNet blocks operate directly on
+    the input.  For a more complex example, see quantize.py.
 
-    If your training code is a fork of yolo, these steps may be more
-    appropriate.  Create custom_patches.py in SyNet from
-    yolov5_patches.py.  In train.py add:
+** Quantize
 
-    from synet.custom_patches import patch_custom
-    patch_custom('katana')
+   TODO
 
-    When specifying a model config, you can either point to a yaml
-    copied from this repository (see synet_pip/synet/zoo/*.yaml), or
-    you can change your model build call from
+** Metrics
 
-    Model(self.cfg or ..., ...)
+   TODO
 
-    to
+** Tflite Utils
 
-    Model(synet.zoo.find_model_path(self.cfg) or ..., ...)
+   TODO
 
-    In this second case, you will be able to specify a --cfg with a
-    yaml name like 'katana-kvga.yaml', and the yaml from the SyNet
-    repo will be used (backwards compatible, so is a safe change).
+* Backends
 
-** Quantizing from Python
+  For now, the only backend supported is Ultralytics.
 
-*** Converting to Keras
+** Ultralytics
 
-    After you load your model (like in [[BYO Pytorch Training Code]]), you
-    can convert your model to keras by using the as_keras context
-    manager.  For example, to quantize a 240x320, batch_size=1 model:
+   Any Ultralytics function (train, predict, val, etc.) will run
+   through SyNet with SyNet modules.  The basic shell syntax is:
 
-    from synet import as_keras, get_model
-    from keras import Model, Input
-    torch_model = get_model("/path/to/model.pt")
-    inp = Input((240, 320, 1), batch_size=1)
-    with as_keras(imgsz=(240, 320)):
-        keras_model = Model(inp, torch_model(inp))
+   #+begin_src shell
+     synet ultralytics [ultralytics ARGS]...
+   #+end_src
 
-*** Quantizing to tflite
+   This performs 3 synet-specific operations, then passes off
+   execution to the normal Ultralytics code entrypoint:
+   - Copy the model config from the synet zoo if necessary.
+   - Set the imgsz (image size) ultralytics parameter according to the
+     model specification.
+   - Apply patches to the Ultralytics modules where necessary to
+     enable proper SyNet model loading within Ultralytics.
+   If you need to use this backend through python (instead of a
+   shell), then the only necessary step is to apply the patches like
+   so:
 
-    Once you have obtained as keras model as shown in [[Converting to
-    Keras]], you can obtain a quantized model using the test (falling
-    back to val) split of a dataset in the YOLOv5 format like os:
+   #+begin_src python
+     from synet.backends import get_backend
+     get_backend('ultralytics').patch()
+   #+end_src
 
-    from synet.quantize import quantize
-    quantize(keras_models, "/path/to/data.yaml", (320,240),
-             number=500, out_path="/desired/output/path.tflite")
+   After this point, you are free to use SyNet models and tflites
+   using the normal Ultralytics API, but do not try to use
+   Ultralytics' "export" functionality to deploy to Sabre.  The
+   resulting models will not be properly optimized and are not
+   expected to run on our chips.
 
-    This will quantize a keras model using 500 samples from the data
-    yaml, saving the output to /desired/output/path.tflite.  If
-    out_path is omitted, the tflite buffer is returned instead.
+   We give some examples/explanations for basic Ultralytics usage
+   here, but for any further questions about Ultralytics, you should
+   consult the Ultralytics github page and documentation:
+   - [[https://github.com/ultralytics/ultralytics]]
+   - https://docs.ultralytics.com/
 
-** Modifying and/or Contributing
+*** Train
 
-*** running the test suite
+    TODO
+
+    The SyNet repository provides a thin wrapper around Ultralytics
+    training for simple training situations.  The basic usage is
+
+    #+begin_src shell
+      synet ultralytics [OTHER ULTRALYTICS ARGS]
+    #+end_src
+
+    For instance, if you want to train a person keypoint model, you
+    can train a qVGA (320x240) model for the sabre chip with
+
+    #+begin_src shell
+      synet ultralytics train model=sabre-keypoint-qvga.yaml data=coco-pose.yaml
+    #+end_src
+
+    This will put all output at ./runs/train/exp.  See "name",
+    "project" and "exists-ok" in the Ultralytics docs for changing
+    this.  The above command also tries to download the coco dataset
+    to ./datasets.  The best way I have found to deal with this is
+    with a symlink to my desired location.
+
+    ln -s /mnt/ml_data/datasets/ultralytics_autodownload ./datasets
+
+    This makes a symlink at ./datasets which points to my datasets
+    directory.  Similarly, if you would like to train a VGA (480x640)
+    model (for instance, for data with much smaller objects), you
+    could run:
+
+    synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
+
+    This will place the best weights at
+    runs/train/pose/weights/best.pt.  Each model yaml knows what
+    resolution is compatible with Sabre per memory constraints, and so
+    uses that resolution by default for training.  The resolution can
+    be overridden, with imgsz=..., and all training images will be
+    scaled according to this resolution, though quantizing will still
+    default to the compatible resolution.  "model=" is actually
+    modified, if the file does not exist, to point to a model in the
+    SyNet model zoo.
+
+*** Val
+
+    TODO
+
+*** Predict
+
+    TODO
 
 * Contributing
 
+** Test Suite
+
+   Please run the test suite before pushing ANY changes upstream with
+   (in the directory containing the "synet" folder):
+
+   #+begin_src shell
+     pytest -v
+   #+end_src
+
 ** Docstring Style
 
-   Docstrings conform to numpy, scipy, and scikits docstring conventions:
-   https://numpydoc.readthedocs.io/en/latest/format.html
+   Docstrings conform to numpy, scipy, and scikits docstring
+   conventions: https://numpydoc.readthedocs.io/en/latest/format.html
 
 ** Imports
 
-   Only quantize.py and tflite_utils.py should import tensorflow at
-   the top of the file.  Otherwise, tensorflow modules should be
-   impored at the beginning of functions where they are used.  This
-   ensures tensorflow is only loaded when strictly necessary.
+   Only quantize.py and tflite_utils.py should import TensorFlow at
+   the top of the file.  Otherwise, TensorFlow modules should be
+   imported at the beginning of functions where they are used.  This
+   ensures TensorFlow is only loaded when strictly necessary.
 
    Only backends/ultralytics.py should directly import anything from
    ultralytics, and backends.ultralytics should only be accessed by
    obtaining the ultralytics backend from backends.get_backend().
-
-** TODO
-
-   - Need chip-specific export
-     - functionality should go in synet/<chip>.py or
-       synet/<chip>/quantize.py or synet/<chip>/__init__.py
-   - Decide if base.Grayscale grayscale method should be improved
-     - possibly change default Grayscale behavior
-     - support variable channel count in backend
