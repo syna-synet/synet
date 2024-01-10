@@ -1,5 +1,9 @@
 from os import listdir
 from os.path import abspath, dirname, join, isfile, commonpath
+from urllib import request
+
+
+WEIGHT_URL_ROOT = "http://profiler/"
 
 
 def in_zoo(model, backend):
@@ -16,6 +20,15 @@ def get_config(model, backend):
     if isfile(model):
         return model
     return join(dirname(__file__), backend, model)
+
+
+def get_weights(model, backend):
+    if isfile(model):
+        return model
+    with request.urlopen(join(WEIGHT_URL_ROOT, backend, model)) as remotefile:
+        with open(model, 'wb') as localfile:
+            localfile.write(remotefile.read())
+    return model
 
 
 def get_configs(backend):

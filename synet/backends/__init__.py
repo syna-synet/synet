@@ -1,7 +1,7 @@
 from importlib import import_module
 from shutil import copy
 
-from ..zoo import in_zoo, get_config, get_configs
+from ..zoo import in_zoo, get_config, get_configs, get_weights
 
 
 class Backend:
@@ -45,10 +45,12 @@ class Backend:
         """Get chip of model."""
         raise NotImplementedError("Please subclass and implement")
 
-    def maybe_grab_from_zoo(self, config_path):
-        if in_zoo(config_path, self.name):
-            copy(get_config(config_path, self.name), config_path)
-        return config_path
+    def maybe_grab_from_zoo(self, model_path):
+        if in_zoo(model_path, self.name):
+            copy(get_config(model_path, self.name), model_path)
+        elif model_path.endswith(".pt"):
+            get_weights(model_path, self.name)
+        return model_path
 
     def get_configs(self):
         return get_configs(self.name)
