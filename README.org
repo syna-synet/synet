@@ -336,12 +336,24 @@
 
 ** Test Suite
 
-   Please run the test suite before pushing ANY changes upstream with
-   (in the directory containing the "synet" folder):
+   Please run the test suite before pushing ANY changes upstream.  To
+   do so, ensure that you have the development dependencies by
+   installing synet with the [dev] set of optional dependencies.
+
+   #+begin_src shell
+     pip install -e ...synet[dev]
+   #+end_src
+
+   Then run the following in the synet root folder (the directory
+   containing the "synet" folder):
 
    #+begin_src shell
      pytest -v
    #+end_src
+
+   If you notice that a bug is present despite the tests passing,
+   please consider adding an appropriate test case in the 'tests'
+   folder: https://docs.pytest.org/en/latest/getting-started.html
 
 ** Docstring Style
 
