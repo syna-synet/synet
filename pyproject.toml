@@ -13,6 +13,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ultra = ["ultralytics"]
+dev = ["synet[ultra]", "pytest"]
 
 [tool.setuptools.package-data]
 synet = ["zoo/**/*.yaml"]

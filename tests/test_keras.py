@@ -188,7 +188,7 @@ def test_ultralytics_segment():
 
 def test_ultralytics_classify():
     from synet.backends.ultralytics import Classify
-    layer = Classify(c1=IN_CHANNELS, c2=OUT_CHANNELS)
+    layer = Classify(None, c1=IN_CHANNELS, c2=OUT_CHANNELS)
     layer.eval()
     layer.export = True
     layer.format = 'tflite'
