@@ -12,9 +12,11 @@ should add a test case for it in tests/test_keras.py.
 
 """
 from typing import Union, Tuple, Optional
+import torch
+from torch.nn import ModuleList
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
-                   Sequential)
+                   Sequential, RNN)
 
 
 # because this module only reinterprets Conv2d parameters, the test
@@ -99,6 +101,33 @@ out of that layer.  num (default 4) convolutions are used in total.
         return self.model(x)
 
 
+class RNNHead(Module):
+    def __init__(self, input_size, hidden_size_x, hidden_size_y, num_layers=1,
+                 base='RNN', bidirectional=False, num_times=4, bias=True,
+                 batch_first=True, dropout=0):
+        super(RNNHead, self).__init__()
+
+        self.stacked_layers = ModuleList()
+
+        for _ in range(num_times):
+            self.stacked_layers.append(
+                HierarchicalRNN(input_size=input_size,
+                                hidden_size_x=hidden_size_x,
+                                hidden_size_y=hidden_size_y,
+                                num_layers=num_layers,
+                                base=base,
+                                bias=bias,
+                                batch_first=batch_first,
+                                dropout=dropout,
+                                bidirectional=bidirectional)
+            )
+            input_size = hidden_size_y
+
+    def forward(self, x):
+        for layer in self.stacked_layers:
+            x = layer(x)
+        return x
+
 class CoBNRLU(Module):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, bias=False, padding=True, groups=1, max_val=6):
@@ -111,3 +140,137 @@ class CoBNRLU(Module):
 
     def forward(self, x):
         return self.module(x)
+
+class HierarchicalRNN(Module):
+    """
+    HierarchicalRNN processes a given tensor first along its X-axis using an RNN,
+    and then feeds the output of this RNN along the Y-axis to another RNN.
+
+    Args:
+    - hidden_size_x (int): The number of features in the hidden state of the
+    X-axis RNN.
+    - hidden_size_y (int): The number of features in the hidden state of the
+    Y-axis RNN.
+    - num_layers (int, optional): Number of recurrent layers for each RNN.
+    Default: 1.
+
+    Returns:
+    - output (tensor): Output from the Y-axis RNN after processing the output of
+    the X-axis RNN.
+    - hn_x (tensor): Hidden state for the RNN processing along the X-axis after
+    the last timestep.
+    - hn_y (tensor): Hidden state for the RNN processing along the Y-axis after
+    the last timestep.
+    """
+
+    def __init__(self, input_size, hidden_size_x, hidden_size_y, num_layers=1,
+                 base='RNN', bidirectional=False, bias=True, batch_first=True,
+                 dropout=0):
+        super(HierarchicalRNN, self).__init__()
+
+        self.bidirectional = 2 if bidirectional else 1
+
+        if bidirectional:
+            self.rnn_x = BiDirectionalRNN(input_size=input_size,
+                                          hidden_size=hidden_size_x,
+                                          num_layers=num_layers,
+                                          base=base,
+                                          bias=bias,
+                                          batch_first=batch_first,
+                                          dropout=dropout)
+
+        else:
+            self.rnn_x = RNN(input_size=input_size,
+                             hidden_size=hidden_size_x,
+                             num_layers=num_layers,
+                             base=base,
+                             bias=bias,
+                             batch_first=batch_first,
+                             dropout=dropout,
+                             bidirectional=False)
+
+        if bidirectional:
+            self.rnn_y = BiDirectionalRNN(input_size=hidden_size_x,
+                                          hidden_size=hidden_size_y,
+                                          num_layers=num_layers,
+                                          base=base,
+                                          bias=bias,
+                                          batch_first=batch_first,
+                                          dropout=dropout)
+        else:
+            self.rnn_y = RNN(input_size=hidden_size_x,
+                             hidden_size=hidden_size_y,
+                             num_layers=num_layers,
+                             base=base,
+                             bias=bias,
+                             batch_first=batch_first,
+                             dropout=dropout,
+                             bidirectional=False)
+
+        self.output_size_x = hidden_size_x
+        self.output_size_y = hidden_size_y
+
+    def forward(self, x):
+        """
+        Forward pass for the HierarchicalRNN module.
+
+        Args:
+        - x (tensor): Input tensor of shape [batch_size, channels, height, width]
+
+        Returns:
+        - output (tensor): Output from the Y-axis RNN.
+        """
+        N, C, H, W = x.size()
+        # RNN over height (h)
+
+        # Rearrange the tensor to the shape (N*H, W, C)
+        x_w = x.permute(0, 2, 3, 1).reshape(N * H, W, C)
+
+        output_x, h = self.rnn_x(x_w)
+
+        # RNN over width (w)
+
+        # Rearrange the output from the first RNN to the shape (N*W, H, C)
+        output_x_reshape = output_x.reshape(
+            N, H, W, self.output_size_x)
+
+        output_x_permute = output_x_reshape.permute(0, 2, 1, 3).reshape(
+            N * W, H, self.output_size_x)
+
+        output, h = self.rnn_y(output_x_permute)
+
+        # Reshape to (batch, channels, height, width)
+        output = output.reshape(
+            N, W, H, self.output_size_y).permute(0, 3, 2, 1)
+
+        return output
+
+
+class BiDirectionalRNN(Module):
+
+    def __init__(self, input_size, hidden_size, num_layers=1,
+                 base='RNN', bias=True, batch_first=True,
+                 dropout=0):
+        super(BiDirectionalRNN, self).__init__()
+
+        self.rnn = RNN(input_size=input_size,
+                       hidden_size=hidden_size,
+                       num_layers=num_layers,
+                       base=base,
+                       bias=bias,
+                       batch_first=batch_first,
+                       dropout=dropout,
+                       bidirectional=False)
+        self.hidden_size = hidden_size
+
+    def forward(self, x):
+        # Reverse the sequence
+        x_reverse = torch.flip(x, [1])
+
+        # Process forward and reverse sequences
+        out_forward, _ = self.rnn(x)
+        out_reverse, _ = self.rnn(x_reverse)
+
+        out_reverse_flip = torch.flip(out_reverse, [1])
+
+        return torch.add(out_reverse_flip, out_forward), _

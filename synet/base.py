@@ -9,7 +9,6 @@ layers.py:
 """
 
 from typing import Tuple, Union, Optional
-
 from torch import cat as torch_cat, minimum, tensor, no_grad
 from torch.nn import (Module as Torch_Module,
                       Conv2d as Torch_Conv2d,
@@ -22,6 +21,8 @@ from torch.nn import (Module as Torch_Module,
                       Dropout as Torch_Dropout,
                       Linear as Torch_Linear)
 from torch.nn.functional import pad
+import torch.nn as nn
+import torch
 
 
 class AsKeras:
@@ -254,7 +255,7 @@ class ReLU(Module):
     def __init__(self, max_val=None):
         super().__init__()
         self.max_val = None if max_val is None else tensor(max_val,
-                                                           dtype=float)
+                                                           dtype=torch.float)
         self.relu = Torch_ReLU()
 
     def forward(self, x):
@@ -363,3 +364,118 @@ class Linear(Module):
         dense.build(x.shape[1:])
         dense.set_weights(params)
         return dense(x)
+
+
+class RNN(Module):
+    def __init__(self, input_size, hidden_size, num_layers=1, base='RNN',
+                 bidirectional=False, bias=True, batch_first=True, dropout=0):
+        super(RNN, self).__init__()
+
+        RNN_bases = {
+            'RNN': nn.RNN,
+            'GRU': nn.GRU,
+            'LSTM': nn.LSTM
+        }
+
+        self.bidirectional = 2 if bidirectional else 1
+
+        self.rnn = RNN_bases[base](
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                bias=bias,
+                batch_first=batch_first,
+                dropout=dropout,
+                bidirectional=bidirectional
+            )
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+
+    def forward(self, x, h0=None, c0=None):
+        if isinstance(self.rnn, nn.LSTM):
+            if h0 is None:
+                h0 = torch.zeros(self.bidirectional * self.num_layers,
+                                 x.size(0),
+                                 self.hidden_size).to(x.device)
+            if c0 is None:
+                c0 = torch.zeros(self.bidirectional * self.num_layers,
+                                 x.size(0),
+                                 self.hidden_size).to(x.device)
+            out, h = self.rnn(x, (h0, c0))
+        else:  # classic RNN/GRU layer
+            if h0 is None:
+                h0 = torch.zeros(self.bidirectional * self.num_layers,
+                                 x.size(0),
+                                 self.hidden_size).to(x.device)
+            out, h = self.rnn(x, h0)
+        return out, h
+
+    def as_keras(self, x):
+        import numpy as np
+
+        raise Exception("Currently, RNN layer is not support Keras implementation")
+
+        rnn_bases_keras = {
+            'RNN': keras.layers.SimpleRNN,
+            'GRU': keras.layers.GRU,
+            'LSTM': keras.layers.LSTM
+        }
+
+        RNNLayer = rnn_bases_keras[type(self.rnn).__name__]
+        keras_layers = []
+
+        for layer_num in range(self.num_layers):
+            if layer_num < self.num_layers - 1:
+                return_sequences = True
+            else:
+                return_sequences = False
+
+            rnn_layer = RNNLayer(
+                units=self.hidden_size,
+                return_sequences=return_sequences,
+                stateful=True,
+                dropout=self.rnn.dropout,
+                recurrent_dropout=0,
+                go_backwards=self.bidirectional
+            )
+            keras_layers.append(rnn_layer)
+
+        inputs = keras.Input(shape=(x.shape[1], x.shape[2]))
+        x_keras = inputs
+        for rnn_layer in keras_layers:
+            x_keras = rnn_layer(x_keras)
+
+        model = keras.Model(inputs, x_keras)
+
+        if isinstance(self.rnn, nn.LSTM):
+            for layer_num, rnn_layer in enumerate(keras_layers):
+                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
+                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
+                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
+                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
+
+                rnn_layer.set_weights([weight_ih.T, weight_hh.T, bias_ih + bias_hh])
+
+        elif isinstance(self.rnn, nn.GRU):
+            for layer_num, rnn_layer in enumerate(keras_layers):
+                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
+                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
+                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
+                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
+
+                # GRU weights: [reset_gate, update_gate, new_gate]
+                split_size = weight_ih.shape[0] // 3
+                weights = np.split(weight_ih.T, 3, axis=1) + np.split(weight_hh.T, 3, axis=1)
+                biases = np.split(bias_ih + bias_hh, 3)
+                rnn_layer.set_weights(weights + biases)
+
+        elif isinstance(self.rnn, nn.RNN):
+            for layer_num, rnn_layer in enumerate(keras_layers):
+                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
+                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
+                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
+                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
+
+                rnn_layer.set_weights([weight_ih.T, weight_hh.T, bias_ih + bias_hh])
+
+        return model
