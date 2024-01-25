@@ -159,10 +159,10 @@ def concat_reshape(model_output: List[ndarray],
 
     # interperate input tuple of tensors based on task
     if task == "pose":
-        kpresence, bclass, b1, b2, kcoord = model_output
+        kpresence, kcoord, b2, bclass, b1 = model_output
         _, num_kpts, _ = kcoord.shape
     if task == "segment":
-        mc, b1, b2, proto, bclass = model_output
+        mc, proto, b2, bclass, b1 = model_output
     if task == "detect":
         b2, bclass, b1 = model_output
     _, num_classes = bclass.shape
