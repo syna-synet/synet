@@ -99,6 +99,10 @@ class Conv2d(Module):
     def forward(self, x):
 
         # temporary code for backwards compatibility
+        if not hasattr(self, 'padding'):
+            self.padding = 'same'
+        if not hasattr(self, 'groups'):
+            self.groups = 1
         if not isinstance(self.padding, str):
             self.padding = "same" if self.padding else 'valid'
 
@@ -266,6 +270,9 @@ class ReLU(Module):
         return minimum(self.relu(x), self.max_val)
 
     def as_keras(self, x):
+        # temporary code for backwards compatibility
+        if not hasattr(self, 'name'):
+            self.name = None
         from keras.layers import ReLU as Keras_ReLU
         return Keras_ReLU(self.max_val, name=self.name)(x)
 
@@ -278,6 +285,10 @@ class BatchNorm(Module):
         self.module = Torch_Batchnorm(features, epsilon, momentum)
 
     def as_keras(self, x):
+        # temporary code for backwards compatibility
+        if hasattr(self, 'batchnorm'):
+            self.module = self.batchnorm
+
         from keras.layers import BatchNormalization as Keras_Batchnorm
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
@@ -309,6 +320,9 @@ class Upsample(Module):
 
     def as_keras(self, x):
         from keras.layers import UpSampling2D
+        # temporary code for backwards compatibility
+        if not hasattr(self, 'module'):
+            self.module = self.upsample
         return UpSampling2D(size=self.scale_factor,
                             interpolation=self.mode,
                             )(x)
