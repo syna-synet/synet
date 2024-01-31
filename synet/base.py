@@ -284,6 +284,12 @@ class BatchNorm(Module):
         self.momentum = momentum
         self.module = Torch_Batchnorm(features, epsilon, momentum)
 
+
+    def forward(self, x):
+        if askeras.use_keras and hasattr(self, 'as_keras'):
+            return self.as_keras(x)
+        return self.batchnorm(x)
+
     def as_keras(self, x):
         # temporary code for backwards compatibility
         if hasattr(self, 'batchnorm'):
