@@ -69,6 +69,9 @@ def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
     # to floats in [0, 1].  Also, model expects a batch dimension,
     # so add a dimension at the beginning
     img = img[newaxis, ..., ::-1] / 255
+    # FW TEAM NOTE: It might be strange converting to float here, but
+    # the model might have been quantized to use a subset of the [0,1]
+    # range, i.e. 220 could map to 255
 
     # Run tflite interpreter on the input image
     tout = run_interpreter(interpreter, img)
@@ -157,42 +160,63 @@ def concat_reshape(model_output: List[ndarray],
 
     """
 
-    # interperate input tuple of tensors based on task
+    # interperate input tuple of tensors based on task.  Though
+    # produced tflite always have output names like
+    # "StatefulPartitionedCall:0", the numbers at the end are infact
+    # alphabetically ordered by the final layer name for each output,
+    # even though those names are discarded.  Hence, the following
+    # variables are nammed to match the corresponding output layer
+    # name and always appear in alphabetical order.
     if task == "pose":
-        kpresence, bclass, b1, b2, kcoord = model_output
-        _, num_kpts, _ = kcoord.shape
+        box1, box2, cls, kpts, pres = model_output
+        _, num_kpts, _ = kpts.shape
     if task == "segment":
-        mc, b1, b2, proto, bclass = model_output
+        box1, box2, cls, proto, seg = model_output
     if task == "detect":
-        b2, bclass, b1 = model_output
-    _, num_classes = bclass.shape
+        box1, box2, cls = model_output
+
+    _, num_classes = cls.shape
     assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
-
     # obtain class confidences
-    conf = npmax(bclass, axis=1, keepdims=True)
-    if classes_to_index:
-        bclass = argmax(bclass, axis=1, keepdims=True)
+    conf = npmax(cls, axis=1, keepdims=True),
+    if classes_to_index: # important for multi-class
+        conf = (*conf, argmax(cls, axis=1, keepdims=True))
 
-    # possibly convert to xywh if necessary
+    # possibly convert to xywh if desired
+    # FW TEAM NOTE: see comment below
     if xywh:
-        bbox_xy_center = (b1 + b2) / 2
-        bbox_wh = b2 - b1
+        bbox_xy_center = (box1 + box2) / 2
+        bbox_wh = box2 - box1
         bbox = cat([bbox_xy_center, bbox_wh], -1)
     else:
-        bbox = cat([b1, b2], -1)
+        bbox = cat([box1, box2], -1)
 
-    # return final output
+    # return final concatenated output
+    # FW TEAM NOTE: Though this procedure creates output consistent
+    # with the original pytorch behavior of these models, you probably
+    # want to do something more clever, i.e. perform NMS reading from
+    # the arrays without concatenating.  At the very least, maybe do a
+    # confidence filter before trying to copy the full tensors.  Also,
+    # future models might have several times the output size, so keep
+    # that in mind.
     if task == "segment":
         # FW TEAM NOTE: the second element here move channel axis to
-        # beginning in line with pytorch behavior.  Make sure this is
-        # what you want before copying this behavior
-        return cat((bbox, conf, bclass, mc), axis=-1), moveaxis(proto, -1, 0)
+        # beginning in line with pytorch behavior.  Maybe not relevent.
+
+        # FW TEAM NOTE: the proto array is HUGE (HxWx64).  You
+        # probably want to compute individual instance masks for your
+        # implementation.  See the YOLACT paper on arxiv.org:
+        # https://arxiv.org/abs/1904.02689.  Basically, for each
+        # instance that survives NMS, generate the segmentation (only
+        # HxW for each instance) by taking the iner product of seg
+        # with each pixel in proto.
+        return cat((bbox, *conf, seg), axis=-1), moveaxis(proto, -1, 0)
     if task == 'pose':
-        return cat((bbox, conf, bclass, cat((kcoord, kpresence), -1
-                                            ).reshape(-1, num_kpts * 3)),
+        return cat((bbox, *conf, cat((kpts, pres), -1
+                                     ).reshape(-1, num_kpts * 3)),
                    axis=-1)
     if task == 'detect':
-        return cat((bbox, conf), axis=-1)
+        return cat((bbox, *conf), axis=-1)
 
 
 def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):

@@ -50,7 +50,7 @@ image shape image_shape, using only number samples.
                             number, channels, kwds)
 
     if val_post:
-        backend.val_post(model, tflite, val_post)
+        backend.val_post(model, tflite, val_post, image_shape=image_shape)
 
 
 def get_tflite(backend, image_shape, model_path, data, number,
@@ -61,11 +61,12 @@ def get_tflite(backend, image_shape, model_path, data, number,
         image_shape = backend.get_shape(model_path)
 
     # generate keras model
+    ptmodel = backend.get_model(model_path)
     inp = Input(image_shape+[channels], batch_size=1)
     with askeras(imgsz=image_shape, quant_export=True,
                  **dict(s.split("=") for s in kwds)), \
          no_grad():
-        kmodel = Model(inp, backend.get_model(model_path)(inp))
+        kmodel = Model(inp, ptmodel(inp))
 
     # quantize the model
     return quantize(kmodel, data, image_shape, number,

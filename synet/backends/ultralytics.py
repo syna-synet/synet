@@ -2,7 +2,7 @@
 from importlib import import_module
 from sys import argv
 
-from cv2 import imread, imwrite
+from cv2 import imread, imwrite, resize
 from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
@@ -69,7 +69,7 @@ class Proto(Torch_Proto):
         self.cv1 = CoBNRLU(c1, c_, 3)
         self.upsample = Upsample(scale_factor=2, mode='bilinear')
         self.cv2 = CoBNRLU(c_, c_, 3)
-        self.cv3 = CoBNRLU(c_, c2, 1)
+        self.cv3 = CoBNRLU(c_, c2, 1, name='proto')
 
 
 class Detect(Torch_Detect):
@@ -100,33 +100,36 @@ class Detect(Torch_Detect):
 
     def as_keras(self, x):
         from tensorflow.keras.layers import Reshape
-        from tensorflow import meshgrid, range, stack, reshape, concat
+        from tensorflow import meshgrid, range, stack, reshape, concat, expand_dims
         from tensorflow.math import ceil
-        from tensorflow.keras.layers import Concatenate
+        from tensorflow.keras.layers import Concatenate, Subtract, Add, Activation
         from tensorflow.keras.activations import sigmoid
         H, W = askeras.kwds['imgsz']
         scale = array((W, H))
         ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
-        anchors = concat([stack((reshape((sx + .5) * s, (-1,)),
-                                 reshape((sy + .5) * s, (-1,))),
-                                -1)
-                          for s, (sy, sx) in ((s.item(),
-                                               meshgrid(range(ceil(H/s)),
-                                                        range(ceil(W/s)),
-                                                        indexing="ij"))
-                                              for s in self.stride)],
-                         -2)
-        box1 = anchors - ltrb[..., :2]
-        box2 = anchors + ltrb[..., 2:]
+        anchors = expand_dims(concat([stack((reshape((sx + .5) * s, (-1,)),
+                                             reshape((sy + .5) * s, (-1,))),
+                                            -1)
+                                      for s, (sy, sx) in ((s.item(),
+                                                           meshgrid(range(ceil(H/s)),
+                                                                    range(ceil(W/s)),
+                                                                    indexing="ij"))
+                                                          for s in self.stride)],
+                                     -2), 0)
+        box1 = Subtract(name="box1")((anchors, ltrb[..., :2]))
+        box2 = Add(name="box2")((anchors, ltrb[..., 2:]))
         if askeras.kwds.get("xywh"):
             box1, box2 = (box1 + box2) / 2, box2 - box1
 
-        out = [box1, box2, sigmoid(Concatenate(-2)([Reshape((-1, self.nc)
-                                                            )(cv3(xi))
-                                                    for cv3, xi in
-                                                    zip(self.cv3, x)]))]
+        cls = Activation(sigmoid, name='cls')(
+            Concatenate(-2)([
+                Reshape((-1, self.nc))(cv3(xi))
+                for cv3, xi in zip(self.cv3, x)
+            ])
+        )
+        out = [box1, box2, cls]
         if askeras.kwds.get("quant_export"):
             return out
         # everything after here needs to be implemented by post-processing
@@ -160,9 +163,9 @@ class Pose(Torch_Pose, Detect):
 
     def as_keras(self, x):
 
-        from tensorflow.keras.layers import Reshape, Concatenate
+        from tensorflow.keras.layers import Reshape, Concatenate, Add
         from tensorflow import (meshgrid, range as trange, stack,
-                                reshape, concat)
+                                reshape, concat, expand_dims)
         from tensorflow.math import ceil
         from tensorflow.keras.activations import sigmoid
 
@@ -177,23 +180,23 @@ class Pose(Torch_Pose, Detect):
                                  cv[:-1](xi), s.item())
                                 for cv, xi, s in
                                 zip(self.cv4, x, self.stride))))
-            pres = Concatenate(-3)([sigmoid(p) for p in pres])
+            pres = Concatenate(-3, name="pres")([sigmoid(p) for p in pres])
         else:
             kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
                     for cv, xi, s in
                     zip(self.cv4, x, self.stride)]
 
         H, W = askeras.kwds['imgsz']
-        anchors = concat([stack((reshape(sx * s, (-1, 1)),
-                                 reshape(sy * s, (-1, 1))),
-                                -1)
-                          for s, (sy, sx) in ((s.item(),
-                                               meshgrid(trange(ceil(H/s)),
-                                                        trange(ceil(W/s)),
-                                                        indexing="ij"))
-                                              for s in self.stride)],
-                         -3)
-        kpts = Concatenate(-3)(kpts) + anchors
+        anchors = expand_dims(concat([
+            stack((reshape(sx * s, (-1, 1)), reshape(sy * s, (-1, 1))), -1)
+            for s, (sy, sx) in ((s.item(),
+                                 meshgrid(trange(ceil(H/s)),
+                                          trange(ceil(W/s)),
+                                          indexing="ij"))
+                                for s in self.stride)],
+                                     -3),
+                              0)
+        kpts = Add(name='kpts')((Concatenate(-3)(kpts), anchors))
 
         x = self.detect(self, x)
 
@@ -235,8 +238,8 @@ class Segment(Torch_Segment, Detect):
     def as_keras(self, x):
         from tensorflow.keras.layers import Reshape, Concatenate
         p = self.proto(x[0])
-        mc = Concatenate(-2)([Reshape((-1, self.nm))(cv4(xi))
-                             for cv4, xi in zip(self.cv4, x)])
+        mc = Concatenate(-2, name='seg')([Reshape((-1, self.nm))(cv4(xi))
+                                          for cv4, xi in zip(self.cv4, x)])
         x = self.detect(self, x)
         if askeras.kwds.get("quant_export"):
             return *x, mc, p
@@ -328,7 +331,7 @@ class Backend(BaseBackend):
 
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
-                 iou_thresh=.7):
+                 iou_thresh=.7, image_shape=None):
         """Default conf_thresh and iou_thresh (.25 and .75 resp.)
         taken from ultralytics/cfg/default.yaml.
 
@@ -338,6 +341,8 @@ class Backend(BaseBackend):
         print("processing", val_post, "with", weights)
         model = self.get_model(weights, full=True)
         img = imread(val_post)
+        if image_shape is not None:
+            img = resize(img, (image_shape[::-1]))
 
         # run th tf model, save plot, and print the values
         print("tflite post processing")
@@ -375,7 +380,7 @@ class Backend(BaseBackend):
         if model.task != "classify":
             kwds['boxes'] = pred[:, :6]
         if model.task == "pose":
-            kwds['keypoints'] = pred[:, 6:].reshape(-1, *model.model.kpt_shape)
+            kwds['keypoints'] = pred[:, 6:].reshape(-1, *model.model.model[-1].kpt_shape)
         if model.task == "segment":
             kwds['masks'] = process_mask(proto, pred[:, 6:], pred[:, :4],
                                          img.shape[:2], upsample=True)

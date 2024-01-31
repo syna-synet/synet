@@ -251,10 +251,11 @@ class Cat(Module):
 
 
 class ReLU(Module):
-    def __init__(self, max_val=None):
+    def __init__(self, max_val=None, name=None):
         super().__init__()
         self.max_val = None if max_val is None else tensor(max_val,
                                                            dtype=float)
+        self.name = name
         self.relu = Torch_ReLU()
 
     def forward(self, x):
@@ -266,7 +267,7 @@ class ReLU(Module):
 
     def as_keras(self, x):
         from keras.layers import ReLU as Keras_ReLU
-        return Keras_ReLU(self.max_val)(x)
+        return Keras_ReLU(self.max_val, name=self.name)(x)
 
 
 class BatchNorm(Module):
