@@ -324,6 +324,11 @@ class Upsample(Module):
         self.mode = mode
         self.module = Torch_Upsample(scale_factor=scale_factor, mode=mode)
 
+    def forward(self, x):
+        if askeras.use_keras and hasattr(self, 'as_keras'):
+            return self.as_keras(x)
+        return self.upsample(x)
+
     def as_keras(self, x):
         from keras.layers import UpSampling2D
         # temporary code for backwards compatibility
