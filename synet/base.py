@@ -167,7 +167,8 @@ class Conv2d(Module):
                            self.kernel_size, self.stride, self.use_bias)
             split.weight[:] = self.weight[chans]
 
-            rest_chans = [i for i in range(self.out_channels) if i not in chans]
+            rest_chans = [i for i in range(self.out_channels)
+                          if i not in chans]
             rest = Conv2d(self.in_channels, self.out_channels - len(chans),
                           self.kernel_size, self.stride, self.use_bias)
             rest.weight[:] = self.weight[rest_chans]
@@ -197,8 +198,8 @@ class ConvTranspose2d(Module):
         self.padding = "valid" if padding == 0 else "same"
         self.use_bias = bias
         self.module = Torch_ConvTranspose2d(in_channels, out_channels,
-                                          kernel_size, stride,
-                                          padding, bias=bias)
+                                            kernel_size, stride,
+                                            padding, bias=bias)
 
     def as_keras(self, x):
         from keras.layers import Conv2DTranspose as Keras_ConvTrans
@@ -334,6 +335,7 @@ class GlobalAvgPool(Module):
     def __init__(self):
         super().__init__()
         self.module = Torch_AdaptiveAvgPool(1)
+
     def as_keras(self, x):
         from keras.layers import GlobalAveragePooling2D
         return GlobalAveragePooling2D(keepdims=True)(x)
@@ -344,6 +346,7 @@ class Dropout(Module):
         super().__init__()
         self.p = p
         self.module = Torch_Dropout(p, inplace=inplace)
+
     def as_keras(self, x):
         from keras.layers import Dropout
         return Dropout(self.p)(x, training=askeras.kwds["train"])
@@ -354,10 +357,11 @@ class Linear(Module):
         super().__init__()
         self.use_bias = bias
         self.module = Torch_Linear(in_c, out_c, bias)
+
     def as_keras(self, x):
         from keras.layers import Dense
         out_c, in_c = self.module.weight.shape
-        params = [self.module.weight.detach().numpy().transpose(1, 0 )]
+        params = [self.module.weight.detach().numpy().transpose(1, 0)]
         if self.use_bias:
             params.append(self.module.bias.detach().numpy())
         dense = Dense(out_c, use_bias=self.use_bias)

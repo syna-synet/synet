@@ -109,15 +109,16 @@ class Detect(Torch_Detect):
         ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
-        anchors = expand_dims(concat([stack((reshape((sx + .5) * s, (-1,)),
-                                             reshape((sy + .5) * s, (-1,))),
-                                            -1)
-                                      for s, (sy, sx) in ((s.item(),
-                                                           meshgrid(range(ceil(H/s)),
-                                                                    range(ceil(W/s)),
-                                                                    indexing="ij"))
-                                                          for s in self.stride)],
-                                     -2), 0)
+        anchors = concat([stack((reshape((sx + .5) * s, (-1,)),
+                                 reshape((sy + .5) * s, (-1,))),
+                                -1)
+                          for s, (sy, sx) in ((s.item(),
+                                               meshgrid(range(ceil(H/s)),
+                                                        range(ceil(W/s)),
+                                                        indexing="ij"))
+                                              for s in self.stride)],
+                         -2)
+        anchors = stack([anchors]*ltrb.shape[0])
         box1 = Subtract(name="box1")((anchors, ltrb[..., :2]))
         box2 = Add(name="box2")((anchors, ltrb[..., 2:]))
         if askeras.kwds.get("xywh"):
@@ -185,18 +186,19 @@ class Pose(Torch_Pose, Detect):
             kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
                     for cv, xi, s in
                     zip(self.cv4, x, self.stride)]
+        kpts = Concatenate(-3)(kpts)
 
         H, W = askeras.kwds['imgsz']
-        anchors = expand_dims(concat([
-            stack((reshape(sx * s, (-1, 1)), reshape(sy * s, (-1, 1))), -1)
-            for s, (sy, sx) in ((s.item(),
-                                 meshgrid(trange(ceil(H/s)),
-                                          trange(ceil(W/s)),
-                                          indexing="ij"))
-                                for s in self.stride)],
-                                     -3),
-                              0)
-        kpts = Add(name='kpts')((Concatenate(-3)(kpts), anchors))
+        anchors = concat([stack((reshape(sx * s, (-1, 1)),
+                                 reshape(sy * s, (-1, 1))), -1)
+                          for s, (sy, sx) in ((s.item(),
+                                               meshgrid(trange(ceil(H/s)),
+                                                        trange(ceil(W/s)),
+                                                        indexing="ij"))
+                                              for s in self.stride)],
+                         -3)
+        anchors = stack([anchors]*kpts.shape[0])
+        kpts = Add(name='kpts')((kpts, anchors))
 
         x = self.detect(self, x)
 

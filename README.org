@@ -15,6 +15,26 @@
   those models.  Using Ultralytics as a backend, you can generate
   trained vision models optimized for our chips.
 
+* Performance
+
+  The following table summarizes model performance on the person class
+  of the COCO dataset for four major computer vision tasks[fn:uds]:
+  Classification[fn:vww], Object Detection, Pose Estimation, and
+  Instance Segmentation.  All of these models run at about 10fps on
+  the Sabre B0 chip.
+
+  | Task                  | Score | Metric        |
+  |-----------------------+-------+---------------|
+  | CLassification        | 0.945 | Top1 accuracy |
+  | Object Detection      | 0.730 | Box AP50      |
+  | Pose Estimation       | 0.729 | Pose AP50     |
+  | Instance Segmentation | 0.631 | Mask AP50     |
+
+[fn:uds] These are calculated with the data subsets used by
+Ultralytics.
+[fn:vww] For classification, we used the Visual Wake Words dataset
+(derived from COCO) with the standard minival data split.
+
 * Roadmap
 
 ** Current Features
