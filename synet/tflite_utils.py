@@ -179,7 +179,7 @@ def concat_reshape(model_output: List[ndarray],
     assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
     # obtain class confidences
     conf = npmax(cls, axis=1, keepdims=True),
-    if classes_to_index: # important for multi-class
+    if classes_to_index:  # important for multi-class
         conf = (*conf, argmax(cls, axis=1, keepdims=True))
 
     # possibly convert to xywh if desired
