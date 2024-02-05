@@ -16,7 +16,7 @@ import torch
 from torch.nn import ModuleList
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
-                   Sequential, RNN)
+                   Sequential, RNN, Transpose, Reshape, Flip, Add, Shape)
 
 
 # because this module only reinterprets Conv2d parameters, the test
@@ -128,6 +128,7 @@ class RNNHead(Module):
             x = layer(x)
         return x
 
+
 class CoBNRLU(Module):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, bias=False, padding=True, groups=1, max_val=6):
@@ -140,6 +141,7 @@ class CoBNRLU(Module):
 
     def forward(self, x):
         return self.module(x)
+
 
 class HierarchicalRNN(Module):
     """
@@ -210,7 +212,11 @@ class HierarchicalRNN(Module):
         self.output_size_x = hidden_size_x
         self.output_size_y = hidden_size_y
 
-    def forward(self, x):
+        self.transpose = Transpose()
+        self.reshape = Reshape()
+        self.get_shape = Shape()
+
+    def forward(self, x):  # x = (N, C, H, W)
         """
         Forward pass for the HierarchicalRNN module.
 
@@ -220,28 +226,27 @@ class HierarchicalRNN(Module):
         Returns:
         - output (tensor): Output from the Y-axis RNN.
         """
-        N, C, H, W = x.size()
+        N, C, H, W = self.get_shape(x)
         # RNN over height (h)
 
-        # Rearrange the tensor to the shape (N*H, W, C)
-        x_w = x.permute(0, 2, 3, 1).reshape(N * H, W, C)
+        # Rearrange the tensor to the shape (N*H, W, C)                                   N, H, W, C -> (0, 2, 3, 1) -> (perm[0], perm[3], perm[1], perm[2]) = (0, 1, 2, 3) -> N, H, W, C
+        x_w = self.transpose(x, (0, 2, 3, 1)) # (N, H, W, C )
+        x_w = self.reshape(x_w, (N * H, W, C))
 
         output_x, h = self.rnn_x(x_w)
 
         # RNN over width (w)
 
         # Rearrange the output from the first RNN to the shape (N*W, H, C)
-        output_x_reshape = output_x.reshape(
-            N, H, W, self.output_size_x)
-
-        output_x_permute = output_x_reshape.permute(0, 2, 1, 3).reshape(
-            N * W, H, self.output_size_x)
+        output_x_reshape = self.reshape(output_x, (N, H, W, self.output_size_x))
+        output_x_permute = self.transpose(output_x_reshape, (0, 2, 1, 3))                               # N, H, W, C -> (0, 2, 1, 3) -> perm[0], perm[3], perm[1], perm[2] = (0, 3, 2, 1) -> N, C, W, H
+        output_x_permute = self.reshape(output_x_permute, (N * W, H, self.output_size_x))
 
         output, h = self.rnn_y(output_x_permute)
 
         # Reshape to (batch, channels, height, width)
-        output = output.reshape(
-            N, W, H, self.output_size_y).permute(0, 3, 2, 1)
+        output = self.reshape(output, (N, W, H, self.output_size_y))
+        output = self.transpose(output, (0, 3, 2, 1))
 
         return output
 
@@ -262,15 +267,17 @@ class BiDirectionalRNN(Module):
                        dropout=dropout,
                        bidirectional=False)
         self.hidden_size = hidden_size
+        self.flip = Flip()
+        self.add = Add()
 
     def forward(self, x):
         # Reverse the sequence
-        x_reverse = torch.flip(x, [1])
+        x_reverse = self.flip(x, [1])
 
         # Process forward and reverse sequences
         out_forward, _ = self.rnn(x)
         out_reverse, _ = self.rnn(x_reverse)
 
-        out_reverse_flip = torch.flip(out_reverse, [1])
+        out_reverse_flip = self.flip(out_reverse, [1])
 
-        return torch.add(out_reverse_flip, out_forward), _
+        return self.add(out_reverse_flip, out_forward), _

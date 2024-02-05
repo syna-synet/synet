@@ -354,6 +354,7 @@ class Linear(Module):
         super().__init__()
         self.use_bias = bias
         self.module = Torch_Linear(in_c, out_c, bias)
+
     def as_keras(self, x):
         from keras.layers import Dense
         out_c, in_c = self.module.weight.shape
@@ -364,6 +365,126 @@ class Linear(Module):
         dense.build(x.shape[1:])
         dense.set_weights(params)
         return dense(x)
+
+
+class Transpose(Module):
+
+    def forward(self, x, perm):
+        if askeras.use_keras:
+            return self.as_keras(x, perm)
+
+        return x.permute(perm)
+
+    def as_keras(self, x, perm):
+        import tensorflow as tf
+
+        # TensorFlow equivalent of PyTorch's (N, C, H, W)
+        tf_format = [0, 3, 1, 2]
+
+        # Map PyTorch indices to TensorFlow indices
+        mapped_indices = [tf_format[index] for index in perm]
+
+        # Convert PyTorch tensor to TensorFlow tensor if necessary
+        if isinstance(x, torch.Tensor):
+            x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32)
+        else:
+            x_tf = x
+
+        # TensorFlow's 'transpose' method with dynamic permutation
+        x_tf_transposed = tf.transpose(x_tf, perm=mapped_indices)
+
+        return x_tf_transposed
+
+
+class Reshape(Module):
+
+    def forward(self, x, shape):
+        if askeras.use_keras:
+            return self.as_keras(x, shape)
+        return x.reshape(*shape)
+
+    def as_keras(self, x, shape):
+        import tensorflow as tf
+
+        # Convert PyTorch tensor to TensorFlow tensor if necessary
+        if isinstance(x, torch.Tensor):
+            x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32)
+        else:
+            x_tf = x
+
+        shape_len = len(shape)
+
+        # Use TensorFlow's reshape function
+        # new_shape = (-1,) + shape  # Add batch dimension placeholder if not included
+        x_tf_reshaped = tf.reshape(x_tf, shape)
+
+        if shape_len < len(x_tf_reshaped.shape):
+            x_tf_reshaped = tf.squeeze(x_tf_reshaped)
+
+        return x_tf_reshaped
+
+
+class Flip(Module):
+
+    def forward(self, x, dims):
+        if askeras.use_keras:
+            return self.as_keras(x, dims)
+        return torch.flip(x, dims)
+
+    def as_keras(self, x, dims):
+        import tensorflow as tf
+        # Convert PyTorch tensor to TensorFlow tensor if necessary
+        if isinstance(x, torch.Tensor):
+            x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32)
+        else:
+            x_tf = x
+        # Correctly using tf.reverse with axis indices
+        x_tf_flipped = tf.reverse(x_tf, axis=dims)
+        return x_tf_flipped
+
+
+class Add(Module):
+    def forward(self, x, y):
+        if askeras.use_keras:
+            return self.as_keras(x, y)
+        return torch.add(x, y)
+
+    def as_keras(self, x, y):
+        import tensorflow as tf
+        # Convert PyTorch tensors to TensorFlow tensors if necessary
+        if isinstance(x, torch.Tensor):
+            x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32)
+        else:
+            x_tf = x
+
+        if isinstance(y, torch.Tensor):
+            y_tf = tf.convert_to_tensor(y.detach().numpy(), dtype=tf.float32)
+        else:
+            y_tf = y
+
+        # Use TensorFlow's add function for element-wise addition
+        x_y_added = tf.add(x_tf, y_tf)
+        return x_y_added
+
+
+class Shape(Module):
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return x.shape
+
+    def as_keras(self, x):
+        if len(x.shape) == 4:
+            N, H, W, C = x.shape
+            x_shape = (N, C, H, W)
+        elif len(x.shape) == 3:
+            H, W, C = x.shape
+            x_shape = (C, H, W)
+        else:  # len(x.shape) == 2
+            H, W = x.shape
+            x_shape = (H, W)
+
+        return x_shape
 
 
 class RNN(Module):
@@ -388,10 +509,21 @@ class RNN(Module):
                 dropout=dropout,
                 bidirectional=bidirectional
             )
+
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        self.bias = bias
+        self.dropout = dropout
+
+        # used in the as_keras method
+        self.base = base
+        self.input_size = input_size
 
     def forward(self, x, h0=None, c0=None):
+
+        if askeras.use_keras:
+            return self.as_keras(x)
+
         if isinstance(self.rnn, nn.LSTM):
             if h0 is None:
                 h0 = torch.zeros(self.bidirectional * self.num_layers,
@@ -411,71 +543,48 @@ class RNN(Module):
         return out, h
 
     def as_keras(self, x):
-        import numpy as np
+        # raise Exception("Currently, RNN layer is not support Keras
+        # implementation")
 
-        raise Exception("Currently, RNN layer is not support Keras implementation")
+        from keras.layers import SimpleRNN, GRU, LSTM, Bidirectional
+        from keras.models import Sequential as torch_Sequential
+        import tensorflow as tf
 
-        rnn_bases_keras = {
-            'RNN': keras.layers.SimpleRNN,
-            'GRU': keras.layers.GRU,
-            'LSTM': keras.layers.LSTM
-        }
+        # Convert PyTorch tensor to TensorFlow tensor if necessary
+        if isinstance(x, torch.Tensor):
+            x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32)
+        else:
+            x_tf = x
 
-        RNNLayer = rnn_bases_keras[type(self.rnn).__name__]
-        keras_layers = []
+        # Create a Sequential model for stacking layers
+        model = torch_Sequential()
 
-        for layer_num in range(self.num_layers):
-            if layer_num < self.num_layers - 1:
-                return_sequences = True
+        RNN_layer = {
+            'LSTM': LSTM,
+            'GRU': GRU,
+            'RNN': SimpleRNN
+        }[self.base]
+
+        input_shape = (x_tf.shape[1], x_tf.shape[2])
+
+        for i in range(self.num_layers):
+            if i == 0:
+                # First layer needs to specify input shape
+                layer = RNN_layer(units=self.hidden_size, return_sequences=True,
+                                  # input_shape=input_shape,
+                                  use_bias=self.bias,
+                                  dropout=self.dropout if i < self.num_layers - 1 else 0)  # No dropout on last layer
             else:
-                return_sequences = False
+                layer = RNN_layer(units=self.hidden_size, return_sequences=True,
+                                  use_bias=self.bias,
+                                  dropout=self.dropout if i < self.num_layers - 1 else 0)  # No dropout on last layer
 
-            rnn_layer = RNNLayer(
-                units=self.hidden_size,
-                return_sequences=return_sequences,
-                stateful=True,
-                dropout=self.rnn.dropout,
-                recurrent_dropout=0,
-                go_backwards=self.bidirectional
-            )
-            keras_layers.append(rnn_layer)
+            if self.bidirectional == 2:
+                layer = Bidirectional(layer)
 
-        inputs = keras.Input(shape=(x.shape[1], x.shape[2]))
-        x_keras = inputs
-        for rnn_layer in keras_layers:
-            x_keras = rnn_layer(x_keras)
+            model.add(layer)
 
-        model = keras.Model(inputs, x_keras)
+        # Since Keras expects batch first, no changes needed for input shape
+        output = model(x_tf)
 
-        if isinstance(self.rnn, nn.LSTM):
-            for layer_num, rnn_layer in enumerate(keras_layers):
-                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
-                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
-                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
-                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
-
-                rnn_layer.set_weights([weight_ih.T, weight_hh.T, bias_ih + bias_hh])
-
-        elif isinstance(self.rnn, nn.GRU):
-            for layer_num, rnn_layer in enumerate(keras_layers):
-                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
-                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
-                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
-                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
-
-                # GRU weights: [reset_gate, update_gate, new_gate]
-                split_size = weight_ih.shape[0] // 3
-                weights = np.split(weight_ih.T, 3, axis=1) + np.split(weight_hh.T, 3, axis=1)
-                biases = np.split(bias_ih + bias_hh, 3)
-                rnn_layer.set_weights(weights + biases)
-
-        elif isinstance(self.rnn, nn.RNN):
-            for layer_num, rnn_layer in enumerate(keras_layers):
-                weight_ih = getattr(self.rnn, f'weight_ih_l{layer_num}').detach().numpy()
-                weight_hh = getattr(self.rnn, f'weight_hh_l{layer_num}').detach().numpy()
-                bias_ih = getattr(self.rnn, f'bias_ih_l{layer_num}').detach().numpy()
-                bias_hh = getattr(self.rnn, f'bias_hh_l{layer_num}').detach().numpy()
-
-                rnn_layer.set_weights([weight_ih.T, weight_hh.T, bias_ih + bias_hh])
-
-        return model
+        return output, None
