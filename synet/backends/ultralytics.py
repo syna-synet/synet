@@ -7,7 +7,7 @@ from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
-from ultralytics.engine import validator
+from ultralytics.engine import validator, predictor
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
@@ -306,18 +306,25 @@ class Backend(BaseBackend):
                   ' to anticipate tflite output')
             task_map = yolo_model.YOLO(model_path).task_map
             for task in task_map:
-                class Val(task_map[task]['validator']):
-                    def postprocess(self, preds):
-                        return super().postprocess(tensor(concat_reshape(
-                            # concate_reshape currently expect ndarry with
-                            # batch size of 1, so remove and re-add batch
-                            # and tensorship.
-                            [p[0].numpy() for p in preds],
-                            self.args.task,
-                            xywh=True
-                        )[None]).permute(0, 2, 1))
-
-                task_map[task]['validator'] = Val
+                for mode in 'predictor', 'validator':
+                    class Wrap(task_map[task][mode]):
+                        def postprocess(self, preds, *args, **kwds):
+                            # concate_reshape currently expect ndarry
+                            # with batch size of 1, so remove and
+                            # re-add batch and tensorship.
+                            preds = concat_reshape([p[0].numpy()
+                                                    for p in preds],
+                                                   self.args.task,
+                                                   classes_to_index=False,
+                                                   xywh=True)
+                            if isinstance(preds, tuple):
+                                preds = (tensor(preds[0][None])
+                                         .permute(0, 2, 1),
+                                         tensor(preds[1][None]))
+                            else:
+                                preds = tensor(preds[None]).permute(0, 2, 1)
+                            return super().postprocess(preds, *args, **kwds)
+                    task_map[task][mode] = Wrap
             yolo_model.YOLO.task_map = task_map
             def tflite_check_imgsz(*args, **kwds):
                 kwds['stride'] = 1
@@ -326,8 +333,11 @@ class Backend(BaseBackend):
                 def __init__(self, *args, **kwds):
                     super().__init__(*args, **kwds)
                     self.output_details.sort(key=lambda x: x['name'])
+                    self.names = {k: self.names[k] for k in range(self.output_details[2]['shape'][2])}
             validator.check_imgsz = tflite_check_imgsz
+            predictor.check_imgsz = tflite_check_imgsz
             validator.AutoBackend = TfliteAutoBackend
+            predictor.AutoBackend = TfliteAutoBackend
 
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
