@@ -229,7 +229,7 @@ class HierarchicalRNN(Module):
         N, C, H, W = self.get_shape(x)
         # RNN over height (h)
 
-        # Rearrange the tensor to the shape (N*H, W, C)                                   N, H, W, C -> (0, 2, 3, 1) -> (perm[0], perm[3], perm[1], perm[2]) = (0, 1, 2, 3) -> N, H, W, C
+        # Rearrange the tensor to the shape (N*H, W, C)
         x_w = self.transpose(x, (0, 2, 3, 1)) # (N, H, W, C )
         x_w = self.reshape(x_w, (N * H, W, C))
 
@@ -239,7 +239,7 @@ class HierarchicalRNN(Module):
 
         # Rearrange the output from the first RNN to the shape (N*W, H, C)
         output_x_reshape = self.reshape(output_x, (N, H, W, self.output_size_x))
-        output_x_permute = self.transpose(output_x_reshape, (0, 2, 1, 3))                               # N, H, W, C -> (0, 2, 1, 3) -> perm[0], perm[3], perm[1], perm[2] = (0, 3, 2, 1) -> N, C, W, H
+        output_x_permute = self.transpose(output_x_reshape, (0, 2, 1, 3))
         output_x_permute = self.reshape(output_x_permute, (N * W, H, self.output_size_x))
 
         output, h = self.rnn_y(output_x_permute)
