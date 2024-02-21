@@ -141,7 +141,7 @@ def run_interpreter(interpreter: Optional[lite.Interpreter],
 def concat_reshape(model_output: List[ndarray],
                    task: str,
                    xywh: Optional[bool] = False,
-                   single_channel: Optional[bool] = False
+                   classes_to_index: Optional[bool] = True
                    ) -> ndarray:
     """Concatenate, reshape, and transpose model output to match pytorch.
 
@@ -155,7 +155,8 @@ def concat_reshape(model_output: List[ndarray],
     task : {"classify", "detect", "segment", "pose"}
         The task the model performs.
     xywh : bool, default=False
-        If true, model output should be converted to xywh
+        If true, model output should be converted to xywh.  Only use for
+        python evaluation.
     classes_to_index : bool, default=True
         If true, convert the classes output logits to single class index
 
@@ -195,16 +196,15 @@ def concat_reshape(model_output: List[ndarray],
     if task == "detect":
         box1, box2, cls = model_output
 
-    _, num_classes = cls.shape
-    assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
+    assert cls.shape[1] == 1, "apply_nms() hardcodes for num_classes=1"
     # obtain class confidences
-    if class_to_index:
-        cls = npmax(cls, axis=1, keepdims=True), argmax(cls, axis=1, keepdims=True)
+    if classes_to_index:
+        cls = (npmax(cls, axis=1, keepdims=True),
+               argmax(cls, axis=1, keepdims=True))
     else:
         cls = cls,
 
-    # possibly convert to xywh if desired
-    # FW TEAM NOTE: see comment below
+    # This is necessary for python evaluation.
     if xywh:
         bbox_xy_center = (box1 + box2) / 2
         bbox_wh = box2 - box1
