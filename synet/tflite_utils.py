@@ -141,7 +141,7 @@ def run_interpreter(interpreter: Optional[lite.Interpreter],
 def concat_reshape(model_output: List[ndarray],
                    task: str,
                    xywh: Optional[bool] = False,
-                   classes_to_index: Optional[bool] = True
+                   single_channel: Optional[bool] = False
                    ) -> ndarray:
     """Concatenate, reshape, and transpose model output to match pytorch.
 
@@ -198,9 +198,10 @@ def concat_reshape(model_output: List[ndarray],
     _, num_classes = cls.shape
     assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
     # obtain class confidences
-    conf = npmax(cls, axis=1, keepdims=True),
-    if classes_to_index:  # important for multi-class
-        conf = (*conf, argmax(cls, axis=1, keepdims=True))
+    if class_to_index:
+        cls = npmax(cls, axis=1, keepdims=True), argmax(cls, axis=1, keepdims=True)
+    else:
+        cls = cls,
 
     # possibly convert to xywh if desired
     # FW TEAM NOTE: see comment below

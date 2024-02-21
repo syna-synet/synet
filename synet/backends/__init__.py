@@ -48,7 +48,7 @@ class Backend:
     def maybe_grab_from_zoo(self, model_path):
         if in_zoo(model_path, self.name):
             copy(get_config(model_path, self.name), model_path)
-        elif model_path.endswith(".pt"):
+        elif model_path.endswith(".pt") or model_path.endswith(".tflite"):
             get_weights(model_path, self.name)
         return model_path
 
