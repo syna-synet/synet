@@ -230,7 +230,7 @@ class HierarchicalRNN(Module):
         # RNN over height (h)
 
         # Rearrange the tensor to the shape (N*H, W, C)
-        x_w = self.transpose(x, (0, 2, 3, 1)) # (N, H, W, C )
+        x_w = self.transpose(x, (0, 2, 3, 1), keras_keep_channel=True) # (N, H, W, C )
         x_w = self.reshape(x_w, (N * H, W, C))
 
         output_x, h = self.rnn_x(x_w)
@@ -246,7 +246,7 @@ class HierarchicalRNN(Module):
 
         # Reshape to (batch, channels, height, width)
         output = self.reshape(output, (N, W, H, self.output_size_y))
-        output = self.transpose(output, (0, 3, 2, 1))
+        output = self.transpose(output, (0, 3, 2, 1), keras_keep_channel=True)
 
         return output
 

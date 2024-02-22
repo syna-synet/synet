@@ -369,20 +369,28 @@ class Linear(Module):
 
 class Transpose(Module):
 
-    def forward(self, x, perm):
+    def forward(self, x, perm, keras_keep_channel=False):
+
+        """
+        param: keras_keep_channel
+        """
+
         if askeras.use_keras:
-            return self.as_keras(x, perm)
+            return self.as_keras(x, perm, keras_keep_channel)
 
         return x.permute(perm)
 
-    def as_keras(self, x, perm):
+    def as_keras(self, x, perm, keras_keep_channel):
         import tensorflow as tf
 
         # TensorFlow equivalent of PyTorch's (N, C, H, W)
         tf_format = [0, 3, 1, 2]
 
-        # Map PyTorch indices to TensorFlow indices
-        mapped_indices = [tf_format[index] for index in perm]
+        if keras_keep_channel:
+            # Map PyTorch indices to TensorFlow indices
+            mapped_indices = [tf_format[index] for index in perm]
+        else:
+            mapped_indices = perm
 
         # Convert PyTorch tensor to TensorFlow tensor if necessary
         if isinstance(x, torch.Tensor):
@@ -564,8 +572,6 @@ class RNN(Module):
             'GRU': GRU,
             'RNN': SimpleRNN
         }[self.base]
-
-        input_shape = (x_tf.shape[1], x_tf.shape[2])
 
         for i in range(self.num_layers):
             if i == 0:
