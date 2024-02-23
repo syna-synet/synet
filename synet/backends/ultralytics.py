@@ -189,7 +189,6 @@ class Pose(Torch_Pose, Detect):
             kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
                     for cv, xi, s in
                     zip(self.cv4, x, self.stride)]
-        kpts = Concatenate(-3)(kpts)
 
         H, W = askeras.kwds['imgsz']
         anchors = generate_anchors(H, W, self.stride, offset=0)       # Nx2
