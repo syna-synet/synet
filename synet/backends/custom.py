@@ -46,7 +46,7 @@ class TFDetect(PC_TFDetect):
             wh = (x[..., 2:4] * 2) ** 2 * tf.transpose(ai, (0, 2, 1, 3))
             box1.append(tf.reshape(xy - wh/2, (1, -1, 2)))
             box2.append(tf.reshape(xy + wh/2, (1, -1, 2)))
-            cls.append(tf.reshape(x[..., 4:], (1, -1, x.shape[-1]-4)))
+            cls.append(tf.reshape(x[..., 4:5]*x[..., 5:], (1, -1, x.shape[-1]-5)))
         return (tf.concat(box1, 1, name='box1'),
                 tf.concat(box2, 1, name='box2'),
                 tf.concat(cls,  1, name='cls'))

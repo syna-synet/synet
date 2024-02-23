@@ -99,7 +99,7 @@ def tf_run(tflite, img, conf_thresh=.25, iou_thresh=.7,
         return preds
 
     # Procces the tflite output to be one tensor
-    preds = concat_reshape(preds, task, backend=backend)
+    preds = concat_reshape(preds, task)
 
     # perform nms
     return apply_nms(preds, conf_thresh, iou_thresh, backend)
@@ -143,8 +143,8 @@ def run_interpreter(interpreter: Optional[lite.Interpreter],
 def concat_reshape(model_output: List[ndarray],
                    task: str,
                    xywh: Optional[bool] = False,
-                   classes_to_index: Optional[bool] = True,
-                   backend: Optional[str] = 'ultralytics') -> ndarray:
+                   classes_to_index: Optional[bool] = True
+                   ) -> ndarray:
     """Concatenate, reshape, and transpose model output to match pytorch.
 
     This method reordering the tflite output structure to be fit to run
@@ -201,13 +201,8 @@ def concat_reshape(model_output: List[ndarray],
     # obtain class confidences.
     if classes_to_index:
         # for yolov5, treat objectness seperately
-        if backend == 'yolov5':
-            obj, cls = cls[:, :1], cls[:, 1:]
         cls = (npmax(cls, axis=1, keepdims=True),
                argmax(cls, axis=1, keepdims=True))
-        if backend == 'yolov5':
-            print(obj)
-            cls = obj, *cls
     else:
         cls = cls,
 
@@ -289,9 +284,6 @@ def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float,
     # then uses objectness * per-class probablities for confidences
     # therafter.
     preds = tensor(preds[preds[:, 4] > conf_thresh], dtype=torchfloat32)
-    if backend == 'yolov5':
-        preds[:, 4] *= preds[:, 5]
-        preds = preds[:, :5]
 
     # Perform NMS
     # https://pytorch.org/vision/stable/generated/torchvision.ops.nms.html
