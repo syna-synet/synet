@@ -324,7 +324,8 @@ class Backend(BaseBackend):
                             else:
                                 preds = tensor(preds[None]).permute(0, 2, 1)
                             return super().postprocess(preds, *args, **kwds)
-                    task_map[task][mode] = Wrap
+                    if task != 'classify':
+                        task_map[task][mode] = Wrap
             yolo_model.YOLO.task_map = task_map
 
             def tflite_check_imgsz(*args, **kwds):
@@ -335,13 +336,17 @@ class Backend(BaseBackend):
                 def __init__(self, *args, **kwds):
                     super().__init__(*args, **kwds)
                     self.output_details.sort(key=lambda x: x['name'])
-                    self.names = {k: self.names[k] for k in range(self.output_details[2]['shape'][2])}
+                    if len(self.output_details) == 1:  # classify
+                        num_classes = self.output_details[0]['shape'][-1]
+                    else:
+                        num_classes = self.output_details[2]['shape'][2]
+                    self.kpt_shape = (self.output_details[-1]['shape'][-2], 3)
+                    self.names = {k: self.names[k] for k in range(num_classes)}
 
             validator.check_imgsz = tflite_check_imgsz
             predictor.check_imgsz = tflite_check_imgsz
             validator.AutoBackend = TfliteAutoBackend
             predictor.AutoBackend = TfliteAutoBackend
-
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7, image_shape=None):
