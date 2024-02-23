@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """This module exists to hold all tflite related processing.  The main
 benefit of keeping this in a seperate modules is so that large
 dependencies (like ultralytics) need not be imported when simulating
@@ -8,21 +9,38 @@ however, do read any "Notes" sections in any function docstrings
 
 """
 
+from argparse import ArgumentParser
 from typing import Optional, List
 
-from cv2 import imread
+from cv2 import (imread, rectangle, addWeighted, imwrite, resize,
+                 circle, putText, FONT_HERSHEY_TRIPLEX)
 from numpy import (newaxis, ndarray, int8, float32 as npfloat32,
                    concatenate as cat, max as npmax, argmax, moveaxis)
 from tensorflow import lite
-from torch import tensor, float32 as torchfloat32
+from torch import tensor, float32 as torchfloat32, sigmoid, tensordot, \
+    repeat_interleave
 from torchvision.ops import nms
 
 
-def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
+def parse_opt(args=None):
+    parser = ArgumentParser()
+    parser.add_argument('tflite')
+    parser.add_argument('img')
+    parser.add_argument('--conf-thresh', type=float, default=.25)
+    parser.add_argument('--iou-thresh', type=float, default=.5)
+    parser.add_argument('--backend', default='ultralytics')
+    parser.add_argument('--task', default='segment')
+    parser.add_argument('--image-shape', nargs=2, type=int, default=None)
+    return parser.parse_args(args=args)
+
+
+def tf_run(tflite, img, conf_thresh=.25, iou_thresh=.7,
+           backend='ultralytics', task='segment', image_shape=None):
     """Run a tflite model on an image, including post-processing.
 
     Loads the tflite, loads the image, preprocesses the image,
     evaluates the tflite on the pre-processed image, and performs
+
     post-processing on the tflite output with a given confidence and
     iou threshold.
 
@@ -50,8 +68,6 @@ def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
 
     """
 
-    assert backend == "ultralytics", "only supports ultralytics"
-
     # initialize tflite interpreter.
     interpreter = lite.Interpreter(**{"model_path"
                                       if isinstance(tflite, str) else
@@ -61,6 +77,9 @@ def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
     # read the image if given as path
     if isinstance(img, str):
         img = imread(img)
+
+    if image_shape is not None:
+        img = resize(img, image_shape[::-1])
 
     # make image RGB (not BGR) channel order, BCHW dimensions, and
     # in the range [0, 1].  cv2's imread reads in BGR channel
@@ -74,13 +93,16 @@ def tf_run(tflite, img, conf_thresh, iou_thresh, backend, task):
     # range, i.e. 220 could map to 255
 
     # Run tflite interpreter on the input image
-    tout = run_interpreter(interpreter, img)
+    preds = run_interpreter(interpreter, img)
+
+    if task == 'classify':
+        return preds
 
     # Procces the tflite output to be one tensor
-    preds = concat_reshape(tout, task)
+    preds = concat_reshape(preds, task)
 
     # perform nms
-    return apply_nms(preds, conf_thresh, iou_thresh)
+    return apply_nms(preds, conf_thresh, iou_thresh, backend)
 
 
 def run_interpreter(interpreter: Optional[lite.Interpreter],
@@ -135,7 +157,8 @@ def concat_reshape(model_output: List[ndarray],
     task : {"classify", "detect", "segment", "pose"}
         The task the model performs.
     xywh : bool, default=False
-        If true, model output should be converted to xywh
+        If true, model output should be converted to xywh.  Only use for
+        python evaluation.
     classes_to_index : bool, default=True
         If true, convert the classes output logits to single class index
 
@@ -175,15 +198,15 @@ def concat_reshape(model_output: List[ndarray],
     if task == "detect":
         box1, box2, cls = model_output
 
-    _, num_classes = cls.shape
-    assert num_classes == 1, "apply_nms() hardcodes for num_classes=1"
-    # obtain class confidences
-    conf = npmax(cls, axis=1, keepdims=True),
-    if classes_to_index:  # important for multi-class
-        conf = (*conf, argmax(cls, axis=1, keepdims=True))
+    # obtain class confidences.
+    if classes_to_index:
+        # for yolov5, treat objectness seperately
+        cls = (npmax(cls, axis=1, keepdims=True),
+               argmax(cls, axis=1, keepdims=True))
+    else:
+        cls = cls,
 
-    # possibly convert to xywh if desired
-    # FW TEAM NOTE: see comment below
+    # xywh is only necessary for python evaluation.
     if xywh:
         bbox_xy_center = (box1 + box2) / 2
         bbox_wh = box2 - box1
@@ -210,16 +233,17 @@ def concat_reshape(model_output: List[ndarray],
         # instance that survives NMS, generate the segmentation (only
         # HxW for each instance) by taking the iner product of seg
         # with each pixel in proto.
-        return cat((bbox, *conf, seg), axis=-1), moveaxis(proto, -1, 0)
+        return cat((bbox, *cls, seg), axis=-1), moveaxis(proto, -1, 0)
     if task == 'pose':
-        return cat((bbox, *conf, cat((kpts, pres), -1
-                                     ).reshape(-1, num_kpts * 3)),
+        return cat((bbox, *cls, cat((kpts, pres), -1
+                                    ).reshape(-1, num_kpts * 3)),
                    axis=-1)
     if task == 'detect':
-        return cat((bbox, *conf), axis=-1)
+        return cat((bbox, *cls), axis=-1)
 
 
-def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):
+def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float,
+              backend):
     """Apply NMS on ndarray prepared model output
 
     preds : ndarray or tuple of ndarray
@@ -244,6 +268,8 @@ def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):
 
     """
 
+    # THIS FUNCTION IS CURRENTLY HARD-CODED FOR SINGLE CLASS
+
     # segmentation task returns a tuple of (preds, proto)
     if isinstance(preds, tuple):
         is_tuple = True
@@ -252,9 +278,74 @@ def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):
         is_tuple = False
 
     # perform confidence thresholding, and convert to tensor for nms.
+    # The trickiness here is that yolov5 has an objectness score plus
+    # per-class probabilities while ultralytics has just per-class
+    # scores.  Yolov5 uses objectness for confidence thresholding, but
+    # then uses objectness * per-class probablities for confidences
+    # therafter.
     preds = tensor(preds[preds[:, 4] > conf_thresh], dtype=torchfloat32)
 
     # Perform NMS
     # https://pytorch.org/vision/stable/generated/torchvision.ops.nms.html
     preds = preds[nms(preds[:, :4], preds[:, 4], iou_thresh)]
     return (preds, tensor(proto)) if is_tuple else preds
+
+
+def build_masks(preds, proto):
+    # contract mask embeddings with proto
+    #                      (  N x k   dot   k x h x w  )
+    masks = sigmoid(tensordot(preds[:, 6:], proto, dims=1))
+    # upsamle mask
+    for dim in 1, 2:
+        masks = repeat_interleave(masks, repeats=8, dim=dim)
+    # clip mask to box
+    for (x1, y1, x2, y2), mask in zip(preds[:, :4], masks):
+        # integer math may be off-by-one near boarder in this
+        # application.
+        mask[:int(y1)] = 0
+        mask[int(y2):] = 0
+        mask[:, :int(x1)] = 0
+        mask[:, int(x2):] = 0
+    return preds[:, :6], masks
+
+
+def main(args=None):
+    # read options, run model
+    opt = parse_opt(args)
+    img = opt.img = imread(opt.img)
+    if opt.image_shape is not None:
+        img = opt.img = resize(opt.img, opt.image_shape[::-1])
+        opt.image_shape = None
+
+    preds = tf_run(**vars(opt))
+    if opt.task == 'segment':
+        preds, masks = build_masks(*preds)
+
+        # shrink mask if upsamle gave too large of area
+        for imdim, maskdim in (0, 1), (1, 2):
+            extra, carry = divmod(masks.shape[maskdim] - img.shape[imdim], 2)
+            if extra == carry == 0:
+                continue
+            masks = masks[(*(slice(None),)*maskdim, slice(extra, -(extra+carry)))]
+
+        # visualize masks and rectangles
+        img_overlay = img.copy()
+        img_overlay[masks.max(0).values > .5] = (0, 255, 0)
+        img = addWeighted(img, .5, img_overlay, .5, 0)
+    elif opt.task == 'pose':
+        for x1, y1, x2, y2, conf, cls, *kpts in preds:
+            for x, y, p in zip(kpts[0::3], kpts[1::3], kpts[2::3]):
+                if p > .5:
+                    circle(img, (int(x), int(y)), 3, (255, 0, 0), -1)
+    elif opt.task != 'classify':
+        for x1, y1, x2, y2, *cls in preds:
+            rectangle(img, (int(x1), int(y1)),
+                      (int(x2), int(y2)),
+                      (0, 0, 255), 2)
+    elif opt.task == 'classify':
+        putText(img, str(*preds), (20, 40), FONT_HERSHEY_TRIPLEX, 1.0, (0, 0, 0))
+    imwrite(opt.task+'.png', img)
+
+
+if __name__ == '__main__':
+    main()

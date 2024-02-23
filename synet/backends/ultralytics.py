@@ -7,7 +7,7 @@ from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
-from ultralytics.engine import validator
+from ultralytics.engine import validator, predictor
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
@@ -72,6 +72,20 @@ class Proto(Torch_Proto):
         self.cv3 = CoBNRLU(c_, c2, 1, name='proto')
 
 
+def generate_anchors(H, W, stride, offset):
+    from tensorflow import meshgrid, range, stack, reshape, concat
+    from tensorflow.math import ceil
+    return concat([stack((reshape((sx + offset) * s, (-1,)),
+                          reshape((sy + offset) * s, (-1,))),
+                         -1)
+                   for s, (sy, sx) in ((s.item(),
+                                        meshgrid(range(ceil(H/s)),
+                                                 range(ceil(W/s)),
+                                                 indexing="ij"))
+                                       for s in stride)],
+                  -2)
+
+
 class Detect(Torch_Detect):
     def __init__(self, nc=80, ch=(), sm_split=None, junk=None):
         super().__init__(nc, ch)
@@ -100,25 +114,16 @@ class Detect(Torch_Detect):
 
     def as_keras(self, x):
         from tensorflow.keras.layers import Reshape
-        from tensorflow import meshgrid, range, stack, reshape, concat, expand_dims
-        from tensorflow.math import ceil
-        from tensorflow.keras.layers import Concatenate, Subtract, Add, Activation
+        from tensorflow import stack
+        from tensorflow.keras.layers import (Concatenate, Subtract,
+                                             Add, Activation)
         from tensorflow.keras.activations import sigmoid
-        H, W = askeras.kwds['imgsz']
-        scale = array((W, H))
         ltrb = Concatenate(-2)([self.dfl(cv2(xi)) * s.item()
                                 for cv2, xi, s in
                                 zip(self.cv2, x, self.stride)])
-        anchors = concat([stack((reshape((sx + .5) * s, (-1,)),
-                                 reshape((sy + .5) * s, (-1,))),
-                                -1)
-                          for s, (sy, sx) in ((s.item(),
-                                               meshgrid(range(ceil(H/s)),
-                                                        range(ceil(W/s)),
-                                                        indexing="ij"))
-                                              for s in self.stride)],
-                         -2)
-        anchors = stack([anchors]*ltrb.shape[0])
+        H, W = askeras.kwds['imgsz']
+        anchors = generate_anchors(H, W, self.stride, .5)             # Nx2
+        anchors = stack([anchors for batch in range(x[0].shape[0])])  # BxNx2
         box1 = Subtract(name="box1")((anchors, ltrb[..., :2]))
         box2 = Add(name="box2")((anchors, ltrb[..., 2:]))
         if askeras.kwds.get("xywh"):
@@ -134,7 +139,7 @@ class Detect(Torch_Detect):
         if askeras.kwds.get("quant_export"):
             return out
         # everything after here needs to be implemented by post-processing
-        out[:2] = (box/scale for box in out[:2])
+        out[:2] = (box/array((W, H)) for box in out[:2])
         return Concatenate(-1)(out)
 
 
@@ -165,9 +170,7 @@ class Pose(Torch_Pose, Detect):
     def as_keras(self, x):
 
         from tensorflow.keras.layers import Reshape, Concatenate, Add
-        from tensorflow import (meshgrid, range as trange, stack,
-                                reshape, concat, expand_dims)
-        from tensorflow.math import ceil
+        from tensorflow import stack, reshape
         from tensorflow.keras.activations import sigmoid
 
         if self.kpt_shape[1] == 3:
@@ -189,16 +192,10 @@ class Pose(Torch_Pose, Detect):
         kpts = Concatenate(-3)(kpts)
 
         H, W = askeras.kwds['imgsz']
-        anchors = concat([stack((reshape(sx * s, (-1, 1)),
-                                 reshape(sy * s, (-1, 1))), -1)
-                          for s, (sy, sx) in ((s.item(),
-                                               meshgrid(trange(ceil(H/s)),
-                                                        trange(ceil(W/s)),
-                                                        indexing="ij"))
-                                              for s in self.stride)],
-                         -3)
-        anchors = stack([anchors]*kpts.shape[0])
-        kpts = Add(name='kpts')((kpts, anchors))
+        anchors = generate_anchors(H, W, self.stride, offset=0)       # Nx2
+        anchors = reshape(anchors, (-1, 1, 2))                        # Nx1x2
+        anchors = stack([anchors for batch in range(x[0].shape[0])])  # BxNx1x2
+        kpts = Add(name='kpts')((Concatenate(-3)(kpts), anchors))
 
         x = self.detect(self, x)
 
@@ -258,10 +255,12 @@ class Classify(Torch_Classify):
         self.pool = GlobalAvgPool()
         self.drop = Dropout(p=0.0, inplace=True)
         self.linear = Linear(c_, c2)
+
     def forward(self, x):
         if askeras.use_keras:
             return self.as_keras(x)
         return super().forward(x)
+
     def as_keras(self, x):
         from keras.layers import Concatenate, Flatten, Softmax
         if isinstance(x, list):
@@ -308,29 +307,47 @@ class Backend(BaseBackend):
                   ' to anticipate tflite output')
             task_map = yolo_model.YOLO(model_path).task_map
             for task in task_map:
-                class Val(task_map[task]['validator']):
-                    def postprocess(self, preds):
-                        return super().postprocess(tensor(concat_reshape(
-                            # concate_reshape currently expect ndarry with
-                            # batch size of 1, so remove and re-add batch
-                            # and tensorship.
-                            [p[0].numpy() for p in preds],
-                            self.args.task,
-                            xywh=True
-                        )[None]).permute(0, 2, 1))
-
-                task_map[task]['validator'] = Val
+                for mode in 'predictor', 'validator':
+                    class Wrap(task_map[task][mode]):
+                        def postprocess(self, preds, *args, **kwds):
+                            # concate_reshape currently expect ndarry
+                            # with batch size of 1, so remove and
+                            # re-add batch and tensorship.
+                            preds = concat_reshape([p[0].numpy()
+                                                    for p in preds],
+                                                   self.args.task,
+                                                   classes_to_index=False,
+                                                   xywh=True)
+                            if isinstance(preds, tuple):
+                                preds = (tensor(preds[0][None])
+                                         .permute(0, 2, 1),
+                                         tensor(preds[1][None]))
+                            else:
+                                preds = tensor(preds[None]).permute(0, 2, 1)
+                            return super().postprocess(preds, *args, **kwds)
+                    if task != 'classify':
+                        task_map[task][mode] = Wrap
             yolo_model.YOLO.task_map = task_map
+
             def tflite_check_imgsz(*args, **kwds):
                 kwds['stride'] = 1
                 return check_imgsz(*args, **kwds)
+
             class TfliteAutoBackend(AutoBackend):
                 def __init__(self, *args, **kwds):
                     super().__init__(*args, **kwds)
                     self.output_details.sort(key=lambda x: x['name'])
-            validator.check_imgsz = tflite_check_imgsz
-            validator.AutoBackend = TfliteAutoBackend
+                    if len(self.output_details) == 1:  # classify
+                        num_classes = self.output_details[0]['shape'][-1]
+                    else:
+                        num_classes = self.output_details[2]['shape'][2]
+                    self.kpt_shape = (self.output_details[-1]['shape'][-2], 3)
+                    self.names = {k: self.names[k] for k in range(num_classes)}
 
+            validator.check_imgsz = tflite_check_imgsz
+            predictor.check_imgsz = tflite_check_imgsz
+            validator.AutoBackend = TfliteAutoBackend
+            predictor.AutoBackend = TfliteAutoBackend
 
     def val_post(self, weights, tflite, val_post, conf_thresh=.25,
                  iou_thresh=.7, image_shape=None):
@@ -382,7 +399,8 @@ class Backend(BaseBackend):
         if model.task != "classify":
             kwds['boxes'] = pred[:, :6]
         if model.task == "pose":
-            kwds['keypoints'] = pred[:, 6:].reshape(-1, *model.model.model[-1].kpt_shape)
+            kpt_shape = model.model.model[-1].kpt_shape
+            kwds['keypoints'] = pred[:, 6:].reshape(-1, *kpt_shape)
         if model.task == "segment":
             kwds['masks'] = process_mask(proto, pred[:, 6:], pred[:, :4],
                                          img.shape[:2], upsample=True)
