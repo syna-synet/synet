@@ -577,20 +577,86 @@ class RNN(Module):
             if i == 0:
                 # First layer needs to specify input shape
                 layer = RNN_layer(units=self.hidden_size, return_sequences=True,
-                                  # input_shape=input_shape,
+                                  input_shape=list(x.shape[1:]),
                                   use_bias=self.bias,
                                   dropout=self.dropout if i < self.num_layers - 1 else 0)  # No dropout on last layer
             else:
                 layer = RNN_layer(units=self.hidden_size, return_sequences=True,
                                   use_bias=self.bias,
-                                  dropout=self.dropout if i < self.num_layers - 1 else 0)  # No dropout on last layer
+                                  dropout=self.dropout if i < self.num_layers - 1 else 0)
 
             if self.bidirectional == 2:
                 layer = Bidirectional(layer)
 
             model.add(layer)
 
+        self.set_keras_weights(model)
         # Since Keras expects batch first, no changes needed for input shape
         output = model(x_tf)
 
         return output, None
+
+    def extract_pytorch_rnn_weights(self):
+        weights = {}
+        for name, param in self.named_parameters():
+            weights[name.split('.')[-1]] = param.detach().cpu().numpy()
+        return weights
+
+    def set_keras_weights(self, keras_model):
+        from keras.layers import SimpleRNN, GRU, LSTM, Bidirectional
+        import numpy as np
+
+        pytorch_weights = self.extract_pytorch_rnn_weights()
+        for layer in keras_model.layers:
+            is_bidirectional = isinstance(layer, Bidirectional)
+            rnn_layer = layer.layer if is_bidirectional else layer
+
+            if isinstance(rnn_layer, (SimpleRNN, GRU, LSTM)):
+                # Initialize lists to hold Keras-compatible weights
+                ih_weights = []
+                hh_weights = []
+                biases = []
+
+                # Determine the layer type and number of gates
+                layer_type = type(rnn_layer).__name__.replace('Cell', '')
+                num_gates = 1 if layer_type == 'SimpleRNN' else 3 if layer_type == 'GRU' else 4
+
+                # Loop to handle gate-specific weights and biases
+                for i in range(num_gates):
+                    gate_suffix = f'_l{i}'
+                    ih_key = f'weight_ih{gate_suffix}'
+                    hh_key = f'weight_hh{gate_suffix}'
+                    bias_ih_key = f'bias_ih{gate_suffix}'
+                    bias_hh_key = f'bias_hh{gate_suffix}'
+
+                    if ih_key in pytorch_weights:
+                        ih_weights.append(pytorch_weights[
+                                              ih_key].T)  # Transpose to match Keras shape
+                    if hh_key in pytorch_weights:
+                        hh_weights.append(
+                            pytorch_weights[hh_key].T)  # Transpose
+
+                    # Accumulate biases for combining later
+                    if bias_ih_key in pytorch_weights and bias_hh_key in pytorch_weights:
+                        biases.append(
+                            pytorch_weights[bias_ih_key] + pytorch_weights[
+                                bias_hh_key])
+
+                # Flatten the weights for SimpleRNN or combine for GRU/LSTM
+                if layer_type == 'SimpleRNN':
+                    keras_weights = [np.vstack(ih_weights),
+                                     np.vstack(hh_weights), np.hstack(biases)]
+                else:  # GRU or LSTM
+                    combined_ih = np.vstack(ih_weights)
+                    combined_hh = np.vstack(hh_weights)
+                    combined_biases = np.hstack(biases)
+                    keras_weights = [combined_ih, combined_hh, combined_biases]
+
+                # Set the weights for the Keras layer
+                if is_bidirectional:
+                    layer.forward_layer.cell.set_weights(keras_weights)
+                    layer.backward_layer.cell.set_weights(keras_weights)
+                else:
+                    rnn_layer.cell.set_weights(keras_weights)
+            else:
+                print(f"Unsupported layer type: {type(rnn_layer)}")

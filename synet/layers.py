@@ -95,7 +95,7 @@ out of that layer.  num (default 4) convolutions are used in total.
                                                     3, bias=True),
                                              self.relu)
                                   for out_channels in out_channels)
-        )
+                                )
 
     def forward(self, x):
         return self.model(x)
@@ -172,42 +172,23 @@ class HierarchicalRNN(Module):
 
         self.bidirectional = 2 if bidirectional else 1
 
-        if bidirectional:
-            self.rnn_x = BiDirectionalRNN(input_size=input_size,
-                                          hidden_size=hidden_size_x,
-                                          num_layers=num_layers,
-                                          base=base,
-                                          bias=bias,
-                                          batch_first=batch_first,
-                                          dropout=dropout)
+        RNN_base = BiDirectionalRNN if bidirectional else RNN
 
-        else:
-            self.rnn_x = RNN(input_size=input_size,
-                             hidden_size=hidden_size_x,
-                             num_layers=num_layers,
-                             base=base,
-                             bias=bias,
-                             batch_first=batch_first,
-                             dropout=dropout,
-                             bidirectional=False)
+        self.rnn_x = RNN_base(input_size=input_size,
+                              hidden_size=hidden_size_x,
+                              num_layers=num_layers,
+                              base=base,
+                              bias=bias,
+                              batch_first=batch_first,
+                              dropout=dropout)
 
-        if bidirectional:
-            self.rnn_y = BiDirectionalRNN(input_size=hidden_size_x,
-                                          hidden_size=hidden_size_y,
-                                          num_layers=num_layers,
-                                          base=base,
-                                          bias=bias,
-                                          batch_first=batch_first,
-                                          dropout=dropout)
-        else:
-            self.rnn_y = RNN(input_size=hidden_size_x,
-                             hidden_size=hidden_size_y,
-                             num_layers=num_layers,
-                             base=base,
-                             bias=bias,
-                             batch_first=batch_first,
-                             dropout=dropout,
-                             bidirectional=False)
+        self.rnn_y = RNN_base(input_size=hidden_size_x,
+                              hidden_size=hidden_size_y,
+                              num_layers=num_layers,
+                              base=base,
+                              bias=bias,
+                              batch_first=batch_first,
+                              dropout=dropout)
 
         self.output_size_x = hidden_size_x
         self.output_size_y = hidden_size_y
@@ -216,7 +197,7 @@ class HierarchicalRNN(Module):
         self.reshape = Reshape()
         self.get_shape = Shape()
 
-    def forward(self, x):  # x = (N, C, H, W)
+    def forward(self, x):
         """
         Forward pass for the HierarchicalRNN module.
 
@@ -230,7 +211,8 @@ class HierarchicalRNN(Module):
         # RNN over height (h)
 
         # Rearrange the tensor to the shape (N*H, W, C)
-        x_w = self.transpose(x, (0, 2, 3, 1), keras_keep_channel=True) # (N, H, W, C )
+        x_w = self.transpose(x, (0, 2, 3, 1),
+                             keras_keep_channel=True)  # (N, H, W, C )
         x_w = self.reshape(x_w, (N * H, W, C))
 
         output_x, h = self.rnn_x(x_w)
@@ -240,7 +222,8 @@ class HierarchicalRNN(Module):
         # Rearrange the output from the first RNN to the shape (N*W, H, C)
         output_x_reshape = self.reshape(output_x, (N, H, W, self.output_size_x))
         output_x_permute = self.transpose(output_x_reshape, (0, 2, 1, 3))
-        output_x_permute = self.reshape(output_x_permute, (N * W, H, self.output_size_x))
+        output_x_permute = self.reshape(output_x_permute,
+                                        (N * W, H, self.output_size_x))
 
         output, h = self.rnn_y(output_x_permute)
 
