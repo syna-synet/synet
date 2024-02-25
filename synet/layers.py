@@ -102,13 +102,40 @@ out of that layer.  num (default 4) convolutions are used in total.
 
 
 class RNNHead(Module):
+    """
+    A modular neural network component that stacks multiple instances of HierarchicalRNN
+    modules to process sequences through multiple layers of abstraction. This structure
+    is designed to enhance the model's ability to capture complex temporal patterns by
+    sequentially applying hierarchical processing steps.
+    """
+
     def __init__(self, input_size, hidden_size_x, hidden_size_y, num_layers=1,
                  base='RNN', bidirectional=False, num_times=4, bias=True,
                  batch_first=True, dropout=0):
+        """
+        Initializes the RNNHead module with specified parameters, dynamically creating
+        a series of HierarchicalRNN modules based on the provided configuration.
+
+        Parameters:
+            input_size (int): The number of expected features in the input `x`.
+            hidden_size_x (int): The size of the hidden layer `x` within each HierarchicalRNN.
+            hidden_size_y (int): The size of the hidden layer `y` within each HierarchicalRNN,
+                                 also the output size of each HierarchicalRNN module.
+            num_layers (int, optional): Number of recurrent layers in each HierarchicalRNN. Default: 1.
+            base (str, optional): Type of RNN (e.g., 'RNN', 'GRU', 'LSTM') used in HierarchicalRNN. Default: 'RNN'.
+            bidirectional (bool, optional): If True, creates bidirectional HierarchicalRNNs. Default: False.
+            num_times (int, optional): The number of HierarchicalRNN modules to stack. Default: 4.
+            bias (bool, optional): If False, then the layers will not use bias weights. Default: True.
+            batch_first (bool, optional): If True, then the input and output tensors are provided
+                                          as (batch, seq, feature). Default: True.
+            dropout (float, optional): If non-zero, introduces a Dropout layer on the outputs of
+                                       each RNN layer except the last layer, in each HierarchicalRNN. Default: 0.
+        """
         super(RNNHead, self).__init__()
 
         self.stacked_layers = ModuleList()
 
+        # Dynamically create and stack HierarchicalRNN modules
         for _ in range(num_times):
             self.stacked_layers.append(
                 HierarchicalRNN(input_size=input_size,
@@ -121,9 +148,20 @@ class RNNHead(Module):
                                 dropout=dropout,
                                 bidirectional=bidirectional)
             )
+            # Update input size for the next HierarchicalRNN module
             input_size = hidden_size_y
 
     def forward(self, x):
+        """
+        Defines the forward pass through the stacked HierarchicalRNN modules.
+
+        Parameters:
+            x (Tensor): The input sequence tensor to the RNNHead.
+
+        Returns:
+            Tensor: The output tensor after processing by all stacked HierarchicalRNN modules.
+        """
+        # Sequentially pass the input through all stacked HierarchicalRNN modules
         for layer in self.stacked_layers:
             x = layer(x)
         return x
@@ -235,12 +273,39 @@ class HierarchicalRNN(Module):
 
 
 class BiDirectionalRNN(Module):
+    """
+    A custom implementation of a bidirectional RNN that processes input sequences in both
+    forward and reverse directions and combines the outputs. This class manually implements
+    bidirectional functionality using a specified base RNN (e.g., vanilla RNN, GRU, LSTM)
+    and combines the forward and reverse outputs.
+
+    Attributes:
+        rnn (Module): The RNN module used for processing sequences in the forward direction.
+        hidden_size (int): The size of the hidden layer in the RNN.
+        flip (Flip): An instance of the Flip class for reversing the sequence order.
+        add (Add): An instance of the Add class for combining forward and reverse outputs.
+    """
 
     def __init__(self, input_size, hidden_size, num_layers=1,
                  base='RNN', bias=True, batch_first=True,
                  dropout=0):
+        """
+        Initializes the BiDirectionalRNN module with the specified parameters.
+
+        Parameters:
+            input_size (int): The number of expected features in the input `x`.
+            hidden_size (int): The number of features in the hidden state `h`.
+            num_layers (int, optional): Number of recurrent layers. Default: 1.
+            base (str, optional): Type of RNN ('RNN', 'GRU', 'LSTM'). Default: 'RNN'.
+            bias (bool, optional): If False, then the layer does not use bias weights. Default: True.
+            batch_first (bool, optional): If True, then the input and output tensors are provided
+                                          as (batch, seq, feature). Default: True.
+            dropout (float, optional): If non-zero, introduces a Dropout layer on the outputs of
+                                       each RNN layer except the last layer. Default: 0.
+        """
         super(BiDirectionalRNN, self).__init__()
 
+        # Initialize the forward RNN module
         self.rnn = RNN(input_size=input_size,
                        hidden_size=hidden_size,
                        num_layers=num_layers,
@@ -250,17 +315,31 @@ class BiDirectionalRNN(Module):
                        dropout=dropout,
                        bidirectional=False)
         self.hidden_size = hidden_size
+
+        # Initialize utilities for flipping sequences and combining outputs
         self.flip = Flip()
         self.add = Add()
 
     def forward(self, x):
-        # Reverse the sequence
+        """
+        Defines the forward pass for the bidirectional RNN.
+
+        Parameters:
+            x (Tensor): The input sequence tensor.
+
+        Returns:
+            Tensor: The combined output of the forward and reverse processed sequences.
+            _: Placeholder for compatibility with the expected RNN output format.
+        """
+        # Reverse the sequence for processing in the reverse direction
         x_reverse = self.flip(x, [1])
 
-        # Process forward and reverse sequences
+        # Process sequences in forward and reverse directions
         out_forward, _ = self.rnn(x)
         out_reverse, _ = self.rnn(x_reverse)
 
+        # Flip the output from the reverse direction to align with forward direction
         out_reverse_flip = self.flip(out_reverse, [1])
 
+        # Combine the outputs from the forward and reverse directions
         return self.add(out_reverse_flip, out_forward), _
