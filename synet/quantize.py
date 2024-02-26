@@ -50,7 +50,7 @@ image shape image_shape, using only number samples.
                             number, channels, kwds)
 
     if val_post:
-        backend.val_post(model, tflite, val_post)
+        backend.val_post(model, tflite, val_post, image_shape=image_shape)
 
 
 def get_tflite(backend, image_shape, model_path, data, number,
@@ -61,11 +61,12 @@ def get_tflite(backend, image_shape, model_path, data, number,
         image_shape = backend.get_shape(model_path)
 
     # generate keras model
+    ptmodel = backend.get_model(model_path)
     inp = Input(image_shape+[channels], batch_size=1)
     with askeras(imgsz=image_shape, quant_export=True,
                  **dict(s.split("=") for s in kwds)), \
          no_grad():
-        kmodel = Model(inp, backend.get_model(model_path)(inp))
+        kmodel = Model(inp, ptmodel(inp))
 
     # quantize the model
     return quantize(kmodel, data, image_shape, number,
@@ -124,12 +125,12 @@ samples reshaped to image_shape.
     shuffle(f)
     for fpth in f[:N]:
         im = imread(fpth)
+        if im.shape[0] != image_shape[0] or im.shape[1] != image_shape[1]:
+            im = resize(im, image_shape[::-1])
         if im.shape[-1] != channels:
             assert channels == 1
             im = im.mean(-1, keepdims=True)
-        if im.shape[0] != image_shape[0] or im.shape[1] != image_shape[1]:
-            im = resize(im, image_shape)
-        yield [im.reshape((1, *image_shape, channels)).astype(float32) / 255]
+        yield [im[None].astype(float32) / 255]
 
 
 def phony_data(image_shape, channels):

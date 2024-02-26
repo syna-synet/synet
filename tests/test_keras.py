@@ -1,5 +1,5 @@
 from numpy import absolute
-from torch import rand, no_grad
+from torch import rand
 from torch.nn.init import uniform_
 
 from synet.base import askeras
@@ -63,18 +63,14 @@ return max error between two output activations
     return diff_arr(t_actv_to_k(tout), kout)
 
 
-def init(module):
-    for param in module.parameters():
-        uniform_(param, -1)
-
-
 def validate(layer, batch_size=BATCH_SIZE,
              in_channels=IN_CHANNELS, shapes=SHAPES, **akwds):
     """Run validate_layer on a set of random input shapes.  Prints the max
 difference between all configurations.
 
     """
-    init(layer)
+    for param in layer.parameters():
+        uniform_(param, -1)
     max_diff = max(validate_layer(layer,
                                   [rand(batch_size, in_channels, *s)*2-1
                                    for s in shape]

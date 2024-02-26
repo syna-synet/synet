@@ -13,6 +13,8 @@ class TFDetect(PC_TFDetect):
 
     # copy call method, but replace // with ceil div
     def call(self, inputs):
+        if askeras.kwds.get('deploy'):
+            return self.deploy(inputs)
         z = []  # inference output
         x = []
         for i in range(self.nl):
@@ -34,6 +36,20 @@ class TFDetect(PC_TFDetect):
                 z.append(tf.reshape(y, [-1, self.na * ny * nx, self.no]))
 
         return x if self.training else (tf.concat(z, 1), x)
+
+    def deploy(self, inputs):
+        assert inputs[0].shape[0] == 1, 'requires batch_size == 1'
+        box1, box2, cls = [], [], []
+        for mi, xi, gi, ai, si in zip(self.m, inputs, self.grid, self.anchor_grid, self.stride):
+            x = tf.reshape(tf.sigmoid(mi(xi)), (1, -1, self.na, self.no))
+            xy = (x[..., 0:2] * 2 + (tf.transpose(gi, (0, 2, 1, 3)) - .5)) * si
+            wh = (x[..., 2:4] * 2) ** 2 * tf.transpose(ai, (0, 2, 1, 3))
+            box1.append(tf.reshape(xy - wh/2, (1, -1, 2)))
+            box2.append(tf.reshape(xy + wh/2, (1, -1, 2)))
+            cls.append(tf.reshape(x[..., 4:5]*x[..., 5:], (1, -1, x.shape[-1]-5)))
+        return (tf.concat(box1, 1, name='box1'),
+                tf.concat(box2, 1, name='box2'),
+                tf.concat(cls,  1, name='cls'))
 
 
 from object_detection.models.yolo import Detect as PC_PTDetect

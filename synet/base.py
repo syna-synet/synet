@@ -100,6 +100,10 @@ class Conv2d(Module):
     def forward(self, x):
 
         # temporary code for backwards compatibility
+        if not hasattr(self, 'padding'):
+            self.padding = 'same'
+        if not hasattr(self, 'groups'):
+            self.groups = 1
         if not isinstance(self.padding, str):
             self.padding = "same" if self.padding else 'valid'
 
@@ -168,7 +172,8 @@ class Conv2d(Module):
                            self.kernel_size, self.stride, self.use_bias)
             split.weight[:] = self.weight[chans]
 
-            rest_chans = [i for i in range(self.out_channels) if i not in chans]
+            rest_chans = [i for i in range(self.out_channels)
+                          if i not in chans]
             rest = Conv2d(self.in_channels, self.out_channels - len(chans),
                           self.kernel_size, self.stride, self.use_bias)
             rest.weight[:] = self.weight[rest_chans]
@@ -198,8 +203,8 @@ class ConvTranspose2d(Module):
         self.padding = "valid" if padding == 0 else "same"
         self.use_bias = bias
         self.module = Torch_ConvTranspose2d(in_channels, out_channels,
-                                          kernel_size, stride,
-                                          padding, bias=bias)
+                                            kernel_size, stride,
+                                            padding, bias=bias)
 
     def as_keras(self, x):
         from keras.layers import Conv2DTranspose as Keras_ConvTrans
@@ -252,10 +257,11 @@ class Cat(Module):
 
 
 class ReLU(Module):
-    def __init__(self, max_val=None):
+    def __init__(self, max_val=None, name=None):
         super().__init__()
         self.max_val = None if max_val is None else tensor(max_val,
-                                                           dtype=torch.float)
+                                                           dtype=float)
+        self.name = name
         self.relu = Torch_ReLU()
 
     def forward(self, x):
@@ -266,8 +272,11 @@ class ReLU(Module):
         return minimum(self.relu(x), self.max_val)
 
     def as_keras(self, x):
+        # temporary code for backwards compatibility
+        if not hasattr(self, 'name'):
+            self.name = None
         from keras.layers import ReLU as Keras_ReLU
-        return Keras_ReLU(self.max_val)(x)
+        return Keras_ReLU(self.max_val, name=self.name)(x)
 
 
 class BatchNorm(Module):
@@ -277,7 +286,14 @@ class BatchNorm(Module):
         self.momentum = momentum
         self.module = Torch_Batchnorm(features, epsilon, momentum)
 
+    def forward(self, x):
+        # temporary code for backwards compatibility
+        if hasattr(self, 'batchnorm'):
+            self.module = self.batchnorm
+        return super().forward(x)
+
     def as_keras(self, x):
+
         from keras.layers import BatchNormalization as Keras_Batchnorm
         batchnorm = Keras_Batchnorm(momentum=self.momentum,
                                     epsilon=self.epsilon)
@@ -307,6 +323,12 @@ class Upsample(Module):
         self.mode = mode
         self.module = Torch_Upsample(scale_factor=scale_factor, mode=mode)
 
+    def forward(self, x):
+        # temporary code for backwards compatibility
+        if not hasattr(self, 'module'):
+            self.module = self.upsample
+        return super().forward(x)
+
     def as_keras(self, x):
         from keras.layers import UpSampling2D
         return UpSampling2D(size=self.scale_factor,
@@ -334,6 +356,7 @@ class GlobalAvgPool(Module):
     def __init__(self):
         super().__init__()
         self.module = Torch_AdaptiveAvgPool(1)
+
     def as_keras(self, x):
         from keras.layers import GlobalAveragePooling2D
         return GlobalAveragePooling2D(keepdims=True)(x)
@@ -344,6 +367,7 @@ class Dropout(Module):
         super().__init__()
         self.p = p
         self.module = Torch_Dropout(p, inplace=inplace)
+
     def as_keras(self, x):
         from keras.layers import Dropout
         return Dropout(self.p)(x, training=askeras.kwds["train"])
@@ -358,7 +382,7 @@ class Linear(Module):
     def as_keras(self, x):
         from keras.layers import Dense
         out_c, in_c = self.module.weight.shape
-        params = [self.module.weight.detach().numpy().transpose(1, 0 )]
+        params = [self.module.weight.detach().numpy().transpose(1, 0)]
         if self.use_bias:
             params.append(self.module.bias.detach().numpy())
         dense = Dense(out_c, use_bias=self.use_bias)

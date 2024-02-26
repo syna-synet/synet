@@ -169,13 +169,14 @@ class RNNHead(Module):
 
 class CoBNRLU(Module):
     def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, bias=False, padding=True, groups=1, max_val=6):
+                 stride=1, bias=False, padding=True, groups=1,
+                 max_val=6, name=None):
         super().__init__()
         self.module = Sequential(Conv2d(in_channels, out_channels,
                                         kernel_size, stride, bias, padding,
                                         groups),
                                  BatchNorm(out_channels),
-                                 ReLU(max_val))
+                                 ReLU(max_val, name=name))
 
     def forward(self, x):
         return self.module(x)
