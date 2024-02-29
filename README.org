@@ -24,7 +24,7 @@
 
   | Task                  | Score | Metric        | Data                                                 |
   |-----------------------+-------+---------------+------------------------------------------------------|
-  | CLassification        | 0.945 | Top1 accuracy | person Visual Wake Words with standard minival split |
+  | Classification        | 0.945 | Top1 accuracy | person Visual Wake Words with standard minival split |
   | Object Detection      | 0.730 | Box AP50      | COCO detection subset used by Ultralytics     |
   | Pose Estimation       | 0.729 | Pose AP50     | COCO keypoint subset used by Ultralytics       |
   | Instance Segmentation | 0.631 | Mask AP50     | COCO segmentation subset used by Ultralytics   |
@@ -56,10 +56,6 @@
      - Computes combined and per-dataset statistics of model
        performance.
 
-** Planned 1.0 Features
-
-   - Autodownload of pretrained models
-
 ** Planned for later releases
 
    - Models optimized for VS680
@@ -85,17 +81,23 @@
   To install via pip:
 
   #+begin_src shell
-    pip install git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]
+    pip install "git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]"
   #+end_src
 
   or if you have cloned to a local copy of the repository:
 
   #+begin_src shell
-    pip install [-e] /PATH/TO/LOCAL/SYNET[ultra]
+    pip install [-e] "/PATH/TO/LOCAL/SYNET[ultra]"
   #+end_src
 
   where '-e' will allow you to make edits to your local clone after
-  install.
+  install.  If you want the exact library versions used to produce the
+  results in the Perforance section above, you can use the following
+  (requires CUDA 11.8)
+
+  #+begin_src shell
+    pip install -r /PATH/TO/LOCAL/SYNET/requirements-11.8.txt "/PATH/TO/LOCAL/SYNET[ultra]"
+  #+end_src
 
 * Quickstart
 
@@ -105,18 +107,16 @@
   #+end_src
   Quantize the trained model.
   #+begin_src shell
-    synet quantize --backend ultralytics --tflite runs/train/pose/weights/best.pt --data /path/to/coco-pose.yaml --kwds demosaic=malvar-bggr -c 1
+    synet quantize --backend ultralytics --tflite runs/train/detect/weights/best.pt --data /path/to/coco.yaml
   #+end_src
-  Evaluate that trained model on your custom data (should be the "test" split).
+  Evaluate that trained model on your custom data test split.
   #+begin_src shell
-    synet ultralytics val model=runs/train/pose/weights/best.tflite split=test task=detect save_txt=True save_conf=True
+    synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True data=CUSTOM_DATA.yaml
   #+end_src
   And finally generate metrics for the model performance, especially at the .95 precision operating point.
   #+begin_src shell
-    synet metrics CUSTOM_DATA.YAML --out-dirs runs/pose/val --project runs/pose/val --precision .95
+    synet metrics CUSTOM_DATA.YAML --out-dirs runs/detect/val --project runs/detect/val --precision .95
   #+end_src
-
-  You could do the same in Python as follows:  TODO
 
 * Core Shell API
 
@@ -152,10 +152,12 @@
    For instance, running:
 
    #+begin_src shell
-     synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML
+     synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML --image-shape 480 640
    #+end_src
 
-   will create a tflite at ./exp/weights/best.tflite.  You may also
+   will create a tflite at ./exp/weights/best.tflite with input shape
+   [480, 640].  The image shape will default to whatever the model is
+   designed to take, but can be overrided in this way.  You may also
    specify a model yaml like so:
 
    #+begin_src shell
@@ -214,11 +216,7 @@
 
 * Core Python API
 
-  TODO
-
 ** Base Layers
-
-   TODO
 
 *** Converting to Keras/TensorFlow
 
@@ -238,18 +236,6 @@
     This method works so long as only SyNet blocks operate directly on
     the input.  For a more complex example, see quantize.py.
 
-** Quantize
-
-   TODO
-
-** Metrics
-
-   TODO
-
-** Tflite Utils
-
-   TODO
-
 * Backends
 
   For now, the only backend supported is Ultralytics.
@@ -263,16 +249,16 @@
      synet ultralytics [ultralytics ARGS]...
    #+end_src
 
-   This performs 3 synet-specific operations, then passes off
+   This performs 3 SyNet-specific operations, then passes off
    execution to the normal Ultralytics code entrypoint:
-   - Copy the model config from the synet zoo if necessary.
+   - Copy the model config from the synet zoo (synet/zoo/ultralytics) if necessary.
    - Set the imgsz (image size) ultralytics parameter according to the
      model specification.
    - Apply patches to the Ultralytics modules where necessary to
      enable proper SyNet model loading within Ultralytics.
    If you need to use this backend through python (instead of a
-   shell), then the only necessary step is to apply the patches like
-   so:
+   shell), then the only necessary step is to apply the patches as in
+   the following snippet:
 
    #+begin_src python
      from synet.backends import get_backend
@@ -281,15 +267,15 @@
 
    After this point, you are free to use SyNet models and tflites
    using the normal Ultralytics API, but do not try to use
-   Ultralytics' "export" functionality to deploy to Sabre.  The
-   resulting models will not be properly optimized and are not
-   expected to run on our chips.
+   Ultralytics' "export" functionality to deploy to Sabre.  Use
+   SyNet's quantize instead.  The resulting models will not be
+   properly optimized and are not expected to run on our chips.
 
    We give some examples/explanations for basic Ultralytics usage
    here, but for any further questions about Ultralytics, you should
    consult the Ultralytics github page and documentation:
    - [[https://github.com/ultralytics/ultralytics]]
-   - https://docs.ultralytics.com
+   - https://docs.ultralytics.com/
 
 *** Train
 
@@ -304,24 +290,18 @@
     can train a VGA (640x480) model for the sabre chip with.
 
     #+begin_src shell
-      synet ultralytics train model=sabre-keypoint-vga.yaml data=coco-pose.yaml
+      synet ultralytics train model=sabre-keypoint-vga.yaml data=coco.yaml
     #+end_src
 
     This will put all output at ./runs/train/exp.  See "name",
     "project" and "exists-ok" in the Ultralytics docs for changing
     this.  The above command also tries to download the coco dataset
-    to ./datasets.  The best way I have found to deal with this is
-    with a symlink to my desired location.
-
-    ln -s /mnt/ml_data/datasets/ultralytics_autodownload ./datasets
-
-    This makes a symlink at ./datasets which points to my datasets
-    directory.
+    to ../datasets.
 
     For any further information, see the ultralytics documentation for
     training: https://docs.ultralytics.com/modes/train
 
-*** Val
+*** Validation
 
     Validation will be performed during training, but only on the
     validation set, and only with the floating point (non-quantized)
@@ -333,7 +313,7 @@
     'save_conf' like so:
 
     #+begin_src shell
-      synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True imgsz=640,480
+      synet ultralytics val model=runs/train/detect/weights/best.tflite split=val task=detect save_txt=True save_conf=True imgsz=640,480 data=coco.yaml
     #+end_src
 
     This should place the results of model evaluation in
@@ -342,9 +322,24 @@
     documentation for validation:
     https://docs.ultralytics.com/modes/val
 
-*** Predict
+*** Predict (for demos)
 
-    TODO
+    You can use Ultralytics' Predict to infer the model on an input
+    and optionally generate visualizations.  For example, you can see
+    the results of the model on your webcam stream with:
+
+    #+begin_src shell
+      synet ultralytics predict model=vga/detect/finetuned.tflite source=0 imgsz='[480,640]' show=True iou=.3 conf=.5
+    #+end_src
+
+    Breaking this apart: You are calling synet with the ultralytics
+    backend in predict mode.  You are passing predict the path to your
+    model (tflite in this case), telling it to run from a webcam
+    (undocumented in Ultralytics, but this is source=0), setting the
+    image shape (ultralytics cannot infer image shape from tflite),
+    telling it to generate a graphical display, and specifying iou and
+    confidence thresholds.  For more information, see the ultralytics
+    documentation: https://docs.ultralytics.com/modes/predict
 
 * Contributing
 
