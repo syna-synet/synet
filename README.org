@@ -11,7 +11,7 @@
   In addition to model definitions, analysis, data manipulation, and
   data analysis tools, SyNet also aims to support several "backends".
   For now, the only backend supported in Ultralytics.  Ultralytics
-  provides a suit of tools for training vision models and visualizing
+  provides a suite of tools for training vision models and visualizing
   those models.  Using Ultralytics as a backend, you can generate
   trained vision models optimized for our chips.
 
@@ -24,7 +24,7 @@
 
   | Task                  | Score | Metric        | Data                                                 |
   |-----------------------+-------+---------------+------------------------------------------------------|
-  | Classification        | 0.945 | Top1 accuracy | person Visual Wake Words with standard minival split |
+  | Classification        | 0.945 | Top1 accuracy | Person Visual Wake Words with standard minival split |
   | Object Detection      | 0.730 | Box AP50      | COCO detection subset used by Ultralytics     |
   | Pose Estimation       | 0.729 | Pose AP50     | COCO keypoint subset used by Ultralytics       |
   | Instance Segmentation | 0.631 | Mask AP50     | COCO segmentation subset used by Ultralytics   |
@@ -91,8 +91,9 @@
   #+end_src
 
   where '-e' will allow you to make edits to your local clone after
-  install.  If you want the exact library versions used to produce the
-  results in the Perforance section above, you can use the following
+  install.  If the install fails in any way, please report this to us.
+  In this case, you can use the exact library versions used to produce
+  the results in the Performance section above using the following
   (requires CUDA 11.8)
 
   #+begin_src shell
@@ -109,7 +110,11 @@
   #+begin_src shell
     synet quantize --backend ultralytics --tflite runs/train/detect/weights/best.pt --data /path/to/coco.yaml
   #+end_src
-  Evaluate that trained model on your custom data test split.
+  Evaluate that trained and quantized model.
+  #+begin_src shell
+    synet ultralytics val model=runs/train/detect/weights/best.tflite task=detect data=coco.yaml
+  #+end_src
+  If you have a custom evaluation dataset, you can evaluate on that (e.g. test split) as well
   #+begin_src shell
     synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True data=CUSTOM_DATA.yaml
   #+end_src
@@ -161,10 +166,10 @@
    specify a model yaml like so:
 
    #+begin_src shell
-     synet quantize --backend ultralytics --cfg sabre-keypoint-qvga.yaml
+     synet quantize --backend ultralytics --cfg sabre-detect-qvga.yaml
    #+end_src
 
-   This will place a quantized model at ./sabre-keypoint-qvga.tflite.
+   This will place a quantized model at ./sabre-detect-qvga.tflite.
    This will let you inspect the architecture, though it will not be a
    trained model, so the model output will be useless.  For more
    information see:
@@ -286,11 +291,11 @@
       synet ultralytics [OTHER ULTRALYTICS ARGS]
     #+end_src
 
-    For instance, if you want to train a person keypoint model, you
+    For instance, if you want to train a person detect model, you
     can train a VGA (640x480) model for the sabre chip with.
 
     #+begin_src shell
-      synet ultralytics train model=sabre-keypoint-vga.yaml data=coco.yaml
+      synet ultralytics train model=sabre-detect-vga.yaml data=coco.yaml
     #+end_src
 
     This will put all output at ./runs/train/exp.  See "name",
@@ -332,7 +337,7 @@
       synet ultralytics predict model=vga/detect/finetuned.tflite source=0 imgsz='[480,640]' show=True iou=.3 conf=.5
     #+end_src
 
-    Breaking this apart: You are calling synet with the ultralytics
+    Breaking this apart: You are calling SyNet with the ultralytics
     backend in predict mode.  You are passing predict the path to your
     model (tflite in this case), telling it to run from a webcam
     (undocumented in Ultralytics, but this is source=0), setting the
