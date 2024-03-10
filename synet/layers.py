@@ -16,7 +16,8 @@ import torch
 from torch.nn import ModuleList
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
-                   Sequential, RNN, Transpose, Reshape, Flip, Add, Shape)
+                   Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
+                   Shape)
 
 
 # because this module only reinterprets Conv2d parameters, the test
@@ -101,72 +102,6 @@ out of that layer.  num (default 4) convolutions are used in total.
         return self.model(x)
 
 
-class RNNHead(Module):
-    """
-    A modular neural network component that stacks multiple instances of HierarchicalRNN
-    modules to process sequences through multiple layers of abstraction. This structure
-    is designed to enhance the model's ability to capture complex temporal patterns by
-    sequentially applying hierarchical processing steps.
-    """
-
-    def __init__(self, input_size, hidden_size_x, hidden_size_y, num_layers=1,
-                 base='RNN', bidirectional=False, num_times=4, bias=True,
-                 batch_first=True, dropout=0):
-        """
-        Initializes the RNNHead module with specified parameters, dynamically creating
-        a series of HierarchicalRNN modules based on the provided configuration.
-
-        Parameters:
-            input_size (int): The number of expected features in the input `x`.
-            hidden_size_x (int): The size of the hidden layer `x` within each HierarchicalRNN.
-            hidden_size_y (int): The size of the hidden layer `y` within each HierarchicalRNN,
-                                 also the output size of each HierarchicalRNN module.
-            num_layers (int, optional): Number of recurrent layers in each HierarchicalRNN. Default: 1.
-            base (str, optional): Type of RNN (e.g., 'RNN', 'GRU', 'LSTM') used in HierarchicalRNN. Default: 'RNN'.
-            bidirectional (bool, optional): If True, creates bidirectional HierarchicalRNNs. Default: False.
-            num_times (int, optional): The number of HierarchicalRNN modules to stack. Default: 4.
-            bias (bool, optional): If False, then the layers will not use bias weights. Default: True.
-            batch_first (bool, optional): If True, then the input and output tensors are provided
-                                          as (batch, seq, feature). Default: True.
-            dropout (float, optional): If non-zero, introduces a Dropout layer on the outputs of
-                                       each RNN layer except the last layer, in each HierarchicalRNN. Default: 0.
-        """
-        super(RNNHead, self).__init__()
-
-        self.stacked_layers = ModuleList()
-
-        # Dynamically create and stack HierarchicalRNN modules
-        for _ in range(num_times):
-            self.stacked_layers.append(
-                HierarchicalRNN(input_size=input_size,
-                                hidden_size_x=hidden_size_x,
-                                hidden_size_y=hidden_size_y,
-                                num_layers=num_layers,
-                                base=base,
-                                bias=bias,
-                                batch_first=batch_first,
-                                dropout=dropout,
-                                bidirectional=bidirectional)
-            )
-            # Update input size for the next HierarchicalRNN module
-            input_size = hidden_size_y
-
-    def forward(self, x):
-        """
-        Defines the forward pass through the stacked HierarchicalRNN modules.
-
-        Parameters:
-            x (Tensor): The input sequence tensor to the RNNHead.
-
-        Returns:
-            Tensor: The output tensor after processing by all stacked HierarchicalRNN modules.
-        """
-        # Sequentially pass the input through all stacked HierarchicalRNN modules
-        for layer in self.stacked_layers:
-            x = layer(x)
-        return x
-
-
 class CoBNRLU(Module):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, bias=False, padding=True, groups=1,
@@ -182,9 +117,9 @@ class CoBNRLU(Module):
         return self.module(x)
 
 
-class HierarchicalRNN(Module):
+class SRNN(Module):
     """
-    HierarchicalRNN processes a given tensor first along its X-axis using an RNN,
+    SRNN (Separable RNN) processes a given tensor first along its X-axis using an RNN,
     and then feeds the output of this RNN along the Y-axis to another RNN.
 
     Args:
@@ -204,30 +139,8 @@ class HierarchicalRNN(Module):
     the last timestep.
     """
 
-    def __init__(self, input_size, hidden_size_x, hidden_size_y, num_layers=1,
-                 base='RNN', bidirectional=False, bias=True, batch_first=True,
-                 dropout=0):
-        super(HierarchicalRNN, self).__init__()
-
-        self.bidirectional = 2 if bidirectional else 1
-
-        RNN_base = BiDirectionalRNN if bidirectional else RNN
-
-        self.rnn_x = RNN_base(input_size=input_size,
-                              hidden_size=hidden_size_x,
-                              num_layers=num_layers,
-                              base=base,
-                              bias=bias,
-                              batch_first=batch_first,
-                              dropout=dropout)
-
-        self.rnn_y = RNN_base(input_size=hidden_size_x,
-                              hidden_size=hidden_size_y,
-                              num_layers=num_layers,
-                              base=base,
-                              bias=bias,
-                              batch_first=batch_first,
-                              dropout=dropout)
+    def __init__(self, hidden_size_x: int, hidden_size_y: int):
+        super(SRNN, self).__init__()
 
         self.output_size_x = hidden_size_x
         self.output_size_y = hidden_size_y
@@ -236,7 +149,7 @@ class HierarchicalRNN(Module):
         self.reshape = Reshape()
         self.get_shape = Shape()
 
-    def forward(self, x):
+    def forward(self, x, rnn_x, rnn_y):
         """
         Forward pass for the HierarchicalRNN module.
 
@@ -254,7 +167,7 @@ class HierarchicalRNN(Module):
                              keras_keep_channel=True)  # (N, H, W, C )
         x_w = self.reshape(x_w, (N * H, W, C))
 
-        output_x, h = self.rnn_x(x_w)
+        output_x, h = rnn_x(x_w)
 
         # RNN over width (w)
 
@@ -264,7 +177,7 @@ class HierarchicalRNN(Module):
         output_x_permute = self.reshape(output_x_permute,
                                         (N * W, H, self.output_size_x))
 
-        output, h = self.rnn_y(output_x_permute)
+        output, h = rnn_y(output_x_permute)
 
         # Reshape to (batch, channels, height, width)
         output = self.reshape(output, (N, W, H, self.output_size_y))
@@ -273,10 +186,45 @@ class HierarchicalRNN(Module):
         return output
 
 
-class BiDirectionalRNN(Module):
+class WSBiSRNN(SRNN):
     """
-    A custom implementation of a bidirectional RNN that processes input sequences in both
-    forward and reverse directions and combines the outputs. This class manually implements
+    WSBiSRNN (Weights Shared Bi-directional Separable RNN)
+    """
+
+    def __init__(self, input_size, hidden_size_x, hidden_size_y, base='RNN',
+                 num_layers=1, bias=True, batch_first=True,
+                 dropout=0):
+        super(WSBiSRNN, self).__init__(hidden_size_x, hidden_size_y)
+
+        self.rnn_x = WSBiRNN(input_size=input_size,
+                             hidden_size=hidden_size_x,
+                             num_layers=num_layers,
+                             base=base,
+                             bias=bias,
+                             batch_first=batch_first,
+                             dropout=dropout)
+
+        self.rnn_y = WSBiRNN(input_size=hidden_size_x,
+                             hidden_size=hidden_size_y,
+                             num_layers=num_layers,
+                             base=base,
+                             bias=bias,
+                             batch_first=batch_first,
+                             dropout=dropout)
+
+        self.output_size_x = hidden_size_x
+        self.output_size_y = hidden_size_y
+
+    def forward(self, x):
+        output = super().forward(x, self.rnn_x, self.rnn_y)
+        return output
+
+
+class WSBiRNN(Module):
+    """
+    WSBiRNN (Weight-Shared Bidirectional) RNN is a custom implementation of a bidirectional
+    RNN that processes input sequences in both forward and reverse directions
+    and combines the outputs. This class manually implements
     bidirectional functionality using a specified base RNN (e.g., vanilla RNN, GRU, LSTM)
     and combines the forward and reverse outputs.
 
@@ -304,17 +252,22 @@ class BiDirectionalRNN(Module):
             dropout (float, optional): If non-zero, introduces a Dropout layer on the outputs of
                                        each RNN layer except the last layer. Default: 0.
         """
-        super(BiDirectionalRNN, self).__init__()
+        super(WSBiRNN, self).__init__()
+
+        # Dictionary mapping base types to their respective PyTorch class
+        RNN_bases = {'RNN': RNN,
+                     'GRU': GRU,
+                     'LSTM': LSTM}
 
         # Initialize the forward RNN module
-        self.rnn = RNN(input_size=input_size,
-                       hidden_size=hidden_size,
-                       num_layers=num_layers,
-                       base=base,
-                       bias=bias,
-                       batch_first=batch_first,
-                       dropout=dropout,
-                       bidirectional=False)
+        self.rnn = RNN_bases['base'](input_size=input_size,
+                                     hidden_size=hidden_size,
+                                     num_layers=num_layers,
+                                     base=base,
+                                     bias=bias,
+                                     batch_first=batch_first,
+                                     dropout=dropout,
+                                     bidirectional=False)
         self.hidden_size = hidden_size
 
         # Initialize utilities for flipping sequences and combining outputs
@@ -339,7 +292,8 @@ class BiDirectionalRNN(Module):
         out_forward, _ = self.rnn(x)
         out_reverse, _ = self.rnn(x_reverse)
 
-        # Flip the output from the reverse direction to align with forward direction
+        # Flip the output from the reverse direction to align with forward
+        # direction
         out_reverse_flip = self.flip(out_reverse, [1])
 
         # Combine the outputs from the forward and reverse directions

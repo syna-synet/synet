@@ -116,11 +116,11 @@ class Conv2d(Module):
         # make padding like in tensorflow, which right aligns convolutionn.
         H, W = (s if isinstance(s, int) else s.item() for s in x.shape[-2:])
         # radius of the kernel and carry.  Border size + carry.  All in y
-        ry, rcy = divmod(self.kernel_size[0]-1, 2)
-        by, bcy = divmod((H-1) % self.stride - rcy, 2)
+        ry, rcy = divmod(self.kernel_size[0] - 1, 2)
+        by, bcy = divmod((H - 1) % self.stride - rcy, 2)
         # radius of the kernel and carry.  Border size + carry.  All in x
-        rx, rcx = divmod(self.kernel_size[1]-1, 2)
-        bx, bcx = divmod((W-1) % self.stride - rcx, 2)
+        rx, rcx = divmod(self.kernel_size[1] - 1, 2)
+        bx, bcx = divmod((W - 1) % self.stride - rcx, 2)
         # apply pad
         return self.conv(
             pad(x, (rx - bx - bcx, rx - bx, ry - by - bcy, ry - by)))
@@ -444,10 +444,13 @@ class Transpose(Module):
         tf_format = [0, 3, 1, 2]
 
         # Map PyTorch indices to TensorFlow indices if channel retention is enabled
-        mapped_indices = [tf_format[index] for index in perm] if keras_keep_channel else perm
+        mapped_indices = [tf_format[index] for index in
+                          perm] if keras_keep_channel else perm
 
         # Convert PyTorch tensors to TensorFlow tensors if necessary
-        x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32) if isinstance(x, torch.Tensor) else x
+        x_tf = tf.convert_to_tensor(x.detach().numpy(),
+                                    dtype=tf.float32) if isinstance(x,
+                                                                    torch.Tensor) else x
 
         # Apply the transposition with TensorFlow's transpose method
         x_tf_transposed = tf.transpose(x_tf, perm=mapped_indices)
@@ -502,7 +505,9 @@ class Reshape(Module):
         """
         import tensorflow as tf
         # Convert PyTorch tensors to TensorFlow tensors if necessary
-        x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32) if isinstance(x, torch.Tensor) else x
+        x_tf = tf.convert_to_tensor(x.detach().numpy(),
+                                    dtype=tf.float32) if isinstance(x,
+                                                                    torch.Tensor) else x
 
         # Use TensorFlow's reshape function to adjust the tensor's dimensions
         x_tf_reshaped = tf.reshape(x_tf, shape)
@@ -556,7 +561,9 @@ class Flip(Module):
         """
         import tensorflow as tf
         # Convert PyTorch tensors to TensorFlow tensors if necessary
-        x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32) if isinstance(x, torch.Tensor) else x
+        x_tf = tf.convert_to_tensor(x.detach().numpy(),
+                                    dtype=tf.float32) if isinstance(x,
+                                                                    torch.Tensor) else x
 
         # Use TensorFlow's reverse function for flipping along specified dimensions
         return tf.reverse(x_tf, axis=dims)
@@ -606,8 +613,12 @@ class Add(Module):
         """
         import tensorflow as tf
         # Convert PyTorch tensors to TensorFlow tensors if necessary
-        x_tf = tf.convert_to_tensor(x.detach().numpy(), dtype=tf.float32) if isinstance(x, torch.Tensor) else x
-        y_tf = tf.convert_to_tensor(y.detach().numpy(), dtype=tf.float32) if isinstance(y, torch.Tensor) else y
+        x_tf = tf.convert_to_tensor(x.detach().numpy(),
+                                    dtype=tf.float32) if isinstance(x,
+                                                                    torch.Tensor) else x
+        y_tf = tf.convert_to_tensor(y.detach().numpy(),
+                                    dtype=tf.float32) if isinstance(y,
+                                                                    torch.Tensor) else y
 
         # Use TensorFlow's add function for element-wise addition
         return tf.add(x_tf, y_tf)
@@ -657,11 +668,11 @@ class Shape(Module):
         # Handle different tensor dimensionality with appropriate
         # transformations
         if len(x.shape) == 4:  # Assuming NCHW format, convert to NHWC
-            N, C, H, W = x.shape
-            x_shape = (N, H, W, C)
+            N, W, H, C = x.shape
+            x_shape = (N, C, H, W)
         elif len(x.shape) == 3:  # Assuming CHW format, convert to HWC
-            C, H, W = x.shape
-            x_shape = (H, W, C)
+            H, W, C = x.shape
+            x_shape = (C, H, W)
         else:  # Assuming 2D tensor, no channel dimension involved
             H, W = x.shape
             x_shape = (H, W)
@@ -669,105 +680,33 @@ class Shape(Module):
         return x_shape
 
 
-class RNN(Module):
+class GenericRNN(nn.Module):
     """
-        A customizable RNN class that supports RNN, GRU, and LSTM networks. It allows for the creation of
-        neural networks with specified configurations, including the number of layers, bidirectionality,
-        dropout rates, and more. Additionally, it includes a method for converting PyTorch tensors to
-        TensorFlow tensors and applying the model in a Keras-compatible fashion.
+    A base class for customizable RNN models supporting RNN, GRU, and LSTM networks.
+    """
 
-        Attributes:
-            bidirectional (int): Factor to adjust layer configurations for bidirectionality.
-            rnn (Module): The instantiated PyTorch RNN, GRU, or LSTM module.
-            hidden_size (int): The size of the hidden layer.
-            num_layers (int): The number of layers in the RNN.
-            bias (bool): Indicates whether bias terms are added to the layers.
-            dropout (float): The dropout rate for the layers (except the last layer).
-            base (str): The type of RNN base (e.g., 'RNN', 'GRU', 'LSTM').
-            input_size (int): The size of the input features.
-        """
-    def __init__(self, input_size, hidden_size, num_layers=1, base='RNN',
+    def __init__(self, input_size, hidden_size, num_layers=1,
                  bidirectional=False, bias=True, batch_first=True, dropout=0):
-        """
-        Initializes the RNN module with the specified parameters.
-
-        Parameters:
-            input_size (int): The number of expected features in the input `x`.
-            hidden_size (int): The number of features in the hidden state `h`.
-            num_layers (int): Number of recurrent layers.
-            base (str): Type of RNN ('RNN', 'GRU', 'LSTM').
-            bidirectional (bool): If True, creates a bidirectional RNN.
-            bias (bool): If False, layers will not use bias weights.
-            batch_first (bool): If True, the input and output tensors are provided
-                                as (batch, seq, feature). Default is True.
-            dropout (float): If non-zero, introduces a Dropout layer on the outputs
-                             of each RNN layer except the last layer.
-        """
-        super(RNN, self).__init__()
-
-        # Dictionary mapping base types to their respective PyTorch class
-        RNN_bases = {'RNN': nn.RNN,
-                     'GRU': nn.GRU,
-                     'LSTM': nn.LSTM}
-
-        # Factor to adjust for bidirectionality
+        super(GenericRNN, self).__init__()
         self.bidirectional = 2 if bidirectional else 1
-
-        # Initialization of the RNN, GRU, or LSTM module
-        self.rnn = RNN_bases[base](
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            bias=bias,
-            batch_first=batch_first,
-            dropout=dropout,
-            bidirectional=bidirectional
-        )
-
-        # Storing the parameters for later use
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.bias = bias
         self.dropout = dropout
-        self.base = base
         self.input_size = input_size
+        self.batch_first = batch_first
+
+    def init_rnn(self, input_size, hidden_size, num_layers,
+                 bidirectional, bias, batch_first, dropout):
+        raise NotImplementedError("Must be implemented by subclass.")
 
     def forward(self, x, h0=None, c0=None):
-        """
-        Forward pass through the RNN. Handles different configurations based on
-        the RNN type (LSTM requires both hidden and cell states).
-
-        Parameters:
-            x (Tensor): Input tensor containing the features.
-            h0 (Tensor, optional): Initial hidden state. If None, it will be initialized to zeros.
-            c0 (Tensor, optional): Initial cell state for LSTM. If None, it will be initialized to zeros.
-
-        Returns:
-            Tuple[Tensor, Tensor]: The output of the RNN as well as the last hidden (and cell) states.
-        """
-        if askeras.use_keras:
-            return self.as_keras(x)
-
-        # LSTM requires both hidden and cell states; initialize if not provided
-        if isinstance(self.rnn, nn.LSTM):
-            if h0 is None:
-                h0 = torch.zeros(self.bidirectional * self.num_layers,
-                                 x.size(0),
-                                 self.hidden_size).to(x.device)
-            if c0 is None:
-                c0 = torch.zeros(self.bidirectional * self.num_layers,
-                                 x.size(0),
-                                 self.hidden_size).to(x.device)
-            out, h = self.rnn(x, (h0, c0))
-        else:  # RNN and GRU only require a hidden state
-            if h0 is None:
-                h0 = torch.zeros(self.bidirectional * self.num_layers,
-                                 x.size(0),
-                                 self.hidden_size).to(x.device)
-            out, h = self.rnn(x, h0)
-        return out, h
+        raise NotImplementedError("Must be implemented by subclass.")
 
     def as_keras(self, x):
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    def generic_as_keras(self, x, RNNBase):
         """
         Converts the model architecture and weights to a Keras-compatible format and applies
         the model to the provided input.
@@ -778,6 +717,7 @@ class RNN(Module):
 
         Parameters:
             x (Tensor): The input tensor for the model, which can be a PyTorch tensor.
+            RNNBase: The base class for the RNN model to be used in the Keras model.
 
         Returns:
             Tuple[Tensor, None]: A tuple containing the output of the Keras model applied to the
@@ -789,7 +729,7 @@ class RNN(Module):
         """
 
         # Import necessary modules from Keras and TensorFlow
-        from keras.layers import SimpleRNN, GRU, LSTM, Bidirectional
+        from keras.layers import Bidirectional
         from keras.models import Sequential as KerasSequential
         import tensorflow as tf
 
@@ -802,21 +742,18 @@ class RNN(Module):
         # Create a Keras Sequential model for stacking layers
         model = KerasSequential()
 
-        # Map from internal base names to Keras layer classes
-        RNN_layer = {'LSTM': LSTM, 'GRU': GRU, 'RNN': SimpleRNN}[self.base]
-
         # Add RNN layers to the Keras model
         for i in range(self.num_layers):
             # Determine if input shape needs to be specified (only for the first layer)
             if i == 0:
-                layer = RNN_layer(units=self.hidden_size, return_sequences=True,
-                                  input_shape=list(x.shape[1:]),
-                                  use_bias=self.bias,
-                                  dropout=self.dropout if i < self.num_layers - 1 else 0)
+                layer = RNNBase(units=self.hidden_size, return_sequences=True,
+                                input_shape=list(x.shape[1:]),
+                                use_bias=self.bias,
+                                dropout=self.dropout if i < self.num_layers - 1 else 0)
             else:
-                layer = RNN_layer(units=self.hidden_size, return_sequences=True,
-                                  use_bias=self.bias,
-                                  dropout=self.dropout if i < self.num_layers - 1 else 0)
+                layer = RNNBase(units=self.hidden_size, return_sequences=True,
+                                use_bias=self.bias,
+                                dropout=self.dropout if i < self.num_layers - 1 else 0)
 
             # Wrap the layer with Bidirectional if needed
             if self.bidirectional == 2:
@@ -856,7 +793,8 @@ class RNN(Module):
         for name, param in self.named_parameters():
             # Process the parameter name to extract the relevant part
             # and use it as the key in the weights dictionary
-            key = name.split('.')[-1]  # Extract the last part of the parameter name
+            key = name.split('.')[
+                -1]  # Extract the last part of the parameter name
 
             # Detach the parameter from the computation graph, move it to CPU,
             # and convert to NumPy array
@@ -865,6 +803,9 @@ class RNN(Module):
         return weights  # Return the dictionary of weights
 
     def set_keras_weights(self, keras_model):
+        raise NotImplementedError("Must be implemented by subclass.")
+
+    def generic_set_keras_weights(self, keras_model, RNNBase: str):
         """
         Sets the weights of a Keras model based on the weights from a PyTorch model.
 
@@ -877,7 +818,7 @@ class RNN(Module):
         """
 
         # Import necessary modules
-        from keras.layers import SimpleRNN, GRU, LSTM, Bidirectional
+        from keras.layers import Bidirectional
         import numpy as np
 
         # Extract weights from PyTorch model
@@ -885,7 +826,8 @@ class RNN(Module):
 
         # Iterate over each layer in the Keras model
         for layer in keras_model.layers:
-            # Check if layer is bidirectional and set layers to update accordingly
+            # Check if layer is bidirectional and set layers to update
+            # accordingly
             if isinstance(layer, Bidirectional):
                 layers_to_update = [layer.layer, layer.backward_layer]
             else:
@@ -893,45 +835,231 @@ class RNN(Module):
 
             # Update weights for each RNN layer in layers_to_update
             for rnn_layer in layers_to_update:
-                if isinstance(rnn_layer, (SimpleRNN, GRU, LSTM)):
-                    # Determine layer type and number of gates
-                    layer_type = type(rnn_layer).__name__
-                    num_gates = {'SimpleRNN': 1, 'GRU': 3, 'LSTM': 4}.get(
-                        layer_type, 0)
 
-                    # Initialize lists for input-hidden, hidden-hidden weights, and biases
-                    ih_weights, hh_weights, biases = [], [], []
+                num_gates = {'SimpleRNN': 1, 'GRU': 3, 'LSTM': 4}.get(
+                    RNNBase, 0)
 
-                    # Process weights and biases for each gate
-                    for i in range(num_gates):
-                        gate_suffix = f'_l{i}'
-                        for prefix in ('weight_ih', 'weight_hh'):
-                            key = f'{prefix}{gate_suffix}'
-                            if key in pytorch_weights:
-                                weights = pytorch_weights[
-                                    key].T  # Transpose to match Keras shape
-                                (
-                                    ih_weights if prefix == 'weight_ih' else hh_weights).append(
-                                    weights)
+                # Initialize lists for input-hidden, hidden-hidden weights,
+                # and biases
+                ih_weights, hh_weights, biases = [], [], []
 
-                        bias_keys = (
+                # Process weights and biases for each gate
+                for i in range(num_gates):
+                    gate_suffix = f'_l{i}'
+                    for prefix in ('weight_ih', 'weight_hh'):
+                        key = f'{prefix}{gate_suffix}'
+                        if key in pytorch_weights:
+                            weights = \
+                                pytorch_weights[key].T  # Transpose to match Keras shape
+
+                            (ih_weights if prefix == 'weight_ih' else hh_weights) \
+                                .append(weights)
+
+                    bias_keys = (
                         f'bias_ih{gate_suffix}', f'bias_hh{gate_suffix}')
-                        if all(key in pytorch_weights for key in bias_keys):
-                            # Sum biases from input-hidden and hidden-hidden
-                            biases.append(
-                                sum(pytorch_weights[key] for key in bias_keys))
+                    if all(key in pytorch_weights for key in bias_keys):
+                        # Sum biases from input-hidden and hidden-hidden
+                        biases.append(
+                            sum(pytorch_weights[key] for key in bias_keys))
 
-                    # Combine weights and biases into a format suitable for Keras
-                    keras_weights = [np.vstack(ih_weights),
-                                     np.vstack(hh_weights), np.hstack(biases)]
+                # Combine weights and biases into a format suitable for Keras
+                keras_weights = [np.vstack(ih_weights),
+                                 np.vstack(hh_weights), np.hstack(biases)]
 
-                    # Set the weights for the Keras layer
-                    if not isinstance(layer, Bidirectional):
-                        rnn_layer.set_weights(keras_weights)
-                    else:
-                        rnn_layer.cell.set_weights(keras_weights)
+                # Set the weights for the Keras layer
+                if not isinstance(layer, Bidirectional):
+                    rnn_layer.set_weights(keras_weights)
                 else:
-                    # Handle unsupported layer types
-                    print(f"Unsupported layer type: {type(rnn_layer)}")
+                    rnn_layer.cell.set_weights(keras_weights)
 
 
+class RNN(GenericRNN):
+    def __init__(self, *args, **kwargs):
+        super(RNN, self).__init__(*args, **kwargs)
+        self.rnn = nn.RNN(input_size=self.input_size,
+                          hidden_size=self.hidden_size,
+                          num_layers=self.num_layers, bias=self.bias,
+                          batch_first=self.batch_first, dropout=self.dropout,
+                          bidirectional=self.bidirectional)
+
+    def forward(self, x, h0=None):
+        if askeras.use_keras:
+            return self.as_keras(x)
+
+        if h0 is None:
+            h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1),
+                             x.size(0), self.hidden_size, device=x.device)
+        out, h = self.rnn(x, h0)
+        return out, h
+
+    def as_keras(self, x):
+        """
+        Converts the model architecture and weights to a Keras-compatible format and applies
+        the model to the provided input.
+
+        This method enables the use of PyTorch-trained models within the Keras framework by
+        converting the input tensor to a TensorFlow tensor, recreating the model architecture
+        in Keras, and setting the weights accordingly.
+
+        Parameters:
+            x (Tensor): The input tensor for the model, which can be a PyTorch tensor.
+
+        Returns:
+            Tuple[Tensor, None]: A tuple containing the output of the Keras model applied to the
+                                 converted input tensor and None (since Keras models do not
+                                 necessarily return the final hidden state as PyTorch models do).
+
+        Raises:
+            ImportError: If the required TensorFlow or Keras modules are not available.
+        """
+
+        # Import necessary modules from Keras and TensorFlow
+        from keras.layers import SimpleRNN
+
+        output, _ = super().generic_as_keras(x, SimpleRNN)
+
+        return output, None
+
+    def set_keras_weights(self, keras_model):
+        """
+        Sets the weights of a Keras model based on the weights from a PyTorch model.
+
+        This function is designed to transfer weights from PyTorch RNN layers
+        to their Keras counterparts, including handling for bidirectional layers. It ensures that the
+        weights are correctly transposed and combined to match Keras's expectations.
+
+        Parameters:
+        - keras_model: The Keras model to update the weights for.
+        """
+
+        self.generic_set_keras_weights(keras_model, 'SimpleRNN')
+
+
+class GRU(GenericRNN):
+    def __init__(self, *args, **kwargs):
+        super(GRU, self).__init__(*args, **kwargs)
+        self.rnn = nn.GRU(input_size=self.input_size,
+                          hidden_size=self.hidden_size,
+                          num_layers=self.num_layers, bias=self.bias,
+                          batch_first=self.batch_first, dropout=self.dropout,
+                          bidirectional=self.bidirectional)
+
+    def forward(self, x, h0=None):
+        if askeras.use_keras:
+            return self.as_keras(x)
+
+        if h0 is None:
+            h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1),
+                             x.size(0), self.hidden_size, device=x.device)
+        out, h = self.rnn(x, h0)
+        return out, h
+
+    def as_keras(self, x):
+        """
+        Converts the model architecture and weights to a Keras-compatible format and applies
+        the model to the provided input.
+
+        This method enables the use of PyTorch-trained models within the Keras framework by
+        converting the input tensor to a TensorFlow tensor, recreating the model architecture
+        in Keras, and setting the weights accordingly.
+
+        Parameters:
+            x (Tensor): The input tensor for the model, which can be a PyTorch tensor.
+
+        Returns:
+            Tuple[Tensor, None]: A tuple containing the output of the Keras model applied to the
+                                 converted input tensor and None (since Keras models do not
+                                 necessarily return the final hidden state as PyTorch models do).
+
+        Raises:
+            ImportError: If the required TensorFlow or Keras modules are not available.
+        """
+
+        # Import necessary modules from Keras and TensorFlow
+        from keras.layers import GRU
+
+        output, _ = super().generic_as_keras(x, GRU)
+
+        return output, None
+
+    def set_keras_weights(self, keras_model):
+        """
+        Sets the weights of a Keras model based on the weights from a PyTorch model.
+
+        This function is designed to transfer weights from PyTorch RNN layers
+        to their Keras counterparts, including handling for bidirectional layers. It ensures that the
+        weights are correctly transposed and combined to match Keras's expectations.
+
+        Parameters:
+        - keras_model: The Keras model to update the weights for.
+        """
+
+        self.generic_set_keras_weights(keras_model, 'GRU')
+
+
+class LSTM(GenericRNN):
+    def __init__(self, *args, **kwargs):
+        super(LSTM, self).__init__(*args, **kwargs)
+        self.rnn = nn.GRU(input_size=self.input_size,
+                          hidden_size=self.hidden_size,
+                          num_layers=self.num_layers, bias=self.bias,
+                          batch_first=self.batch_first, dropout=self.dropout,
+                          bidirectional=self.bidirectional)
+
+    def forward(self, x, h0=None, c0=None):
+        if askeras.use_keras:
+            return self.as_keras(x)
+
+        if h0 is None:
+            h0 = torch.zeros(self.bidirectional * self.num_layers,
+                             x.size(0),
+                             self.hidden_size).to(x.device)
+        if c0 is None:
+            c0 = torch.zeros(self.bidirectional * self.num_layers,
+                             x.size(0),
+                             self.hidden_size).to(x.device)
+        out, h = self.rnn(x, (h0, c0))
+
+        return out, h
+
+    def as_keras(self, x):
+        """
+        Converts the model architecture and weights to a Keras-compatible format and applies
+        the model to the provided input.
+
+        This method enables the use of PyTorch-trained models within the Keras framework by
+        converting the input tensor to a TensorFlow tensor, recreating the model architecture
+        in Keras, and setting the weights accordingly.
+
+        Parameters:
+            x (Tensor): The input tensor for the model, which can be a PyTorch tensor.
+
+        Returns:
+            Tuple[Tensor, None]: A tuple containing the output of the Keras model applied to the
+                                 converted input tensor and None (since Keras models do not
+                                 necessarily return the final hidden state as PyTorch models do).
+
+        Raises:
+            ImportError: If the required TensorFlow or Keras modules are not available.
+        """
+
+        # Import necessary modules from Keras and TensorFlow
+        from keras.layers import LSTM
+
+        output, _ = super().generic_as_keras(x, LSTM)
+
+        return output, None
+
+    def set_keras_weights(self, keras_model):
+        """
+        Sets the weights of a Keras model based on the weights from a PyTorch model.
+
+        This function is designed to transfer weights from PyTorch RNN layers
+        to their Keras counterparts, including handling for bidirectional layers. It ensures that the
+        weights are correctly transposed and combined to match Keras's expectations.
+
+        Parameters:
+        - keras_model: The Keras model to update the weights for.
+        """
+
+        self.generic_set_keras_weights(keras_model, 'LSTM')
