@@ -8,7 +8,7 @@ layers.py:
 - layers.py should only import from base.py.
 """
 
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, List
 from torch import cat as torch_cat, minimum, tensor, no_grad
 from torch.nn import (Module as Torch_Module,
                       Conv2d as Torch_Conv2d,
@@ -402,7 +402,8 @@ class Transpose(Module):
     compatibility with Keras' channel ordering conventions.
     """
 
-    def forward(self, x, perm, keras_keep_channel=False):
+    def forward(self, x, perm: Union[Tuple[int], List[int]],
+                keep_channel_last: bool = False):
         """
         Transposes the input tensor according to the specified dimension permutation. If integrated
         with Keras, it converts PyTorch tensors to TensorFlow tensors before transposing, with an
@@ -411,7 +412,7 @@ class Transpose(Module):
         Parameters:
             x (Tensor): The input tensor to be transposed.
             perm (tuple or list): The permutation of dimensions to apply to the tensor.
-            keras_keep_channel (bool, optional): Specifies whether to adjust the permutation to
+            keep_channel_last (bool, optional): Specifies whether to adjust the permutation to
                                                  retain Keras' channel ordering convention. Default
                                                  is False.
 
@@ -419,11 +420,12 @@ class Transpose(Module):
             Tensor: The transposed tensor.
         """
         if askeras.use_keras:
-            return self.as_keras(x, perm, keras_keep_channel)
+            return self.as_keras(x, perm, keep_channel_last)
         # Use PyTorch's permute method for the operation
         return x.permute(*perm)
 
-    def as_keras(self, x, perm, keras_keep_channel):
+    def as_keras(self, x, perm: Union[Tuple[int], List[int]],
+                 keep_channel_last: bool):
         """
         Handles tensor transposition in a TensorFlow/Keras environment, converting PyTorch tensors
         to TensorFlow tensors if necessary, and applying the specified permutation. Supports an
@@ -432,7 +434,7 @@ class Transpose(Module):
         Parameters:
             x (Tensor): The input tensor, possibly a PyTorch tensor.
             perm (tuple or list): The permutation of dimensions to apply.
-            keras_keep_channel (bool): If True, adjusts the permutation to retain Keras' channel
+            keep_channel_last (bool): If True, adjusts the permutation to retain Keras' channel
                                        ordering convention.
 
         Returns:
@@ -445,7 +447,7 @@ class Transpose(Module):
 
         # Map PyTorch indices to TensorFlow indices if channel retention is enabled
         mapped_indices = [tf_format[index] for index in
-                          perm] if keras_keep_channel else perm
+                          perm] if keep_channel_last else perm
 
         # Convert PyTorch tensors to TensorFlow tensors if necessary
         x_tf = tf.convert_to_tensor(x.detach().numpy(),
@@ -470,7 +472,7 @@ class Reshape(Module):
     runtime context.
     """
 
-    def forward(self, x, shape):
+    def forward(self, x, shape: Union[Tuple[int], List[int]]):
         """
         Reshapes the input tensor to the specified shape. If integrated with Keras, it converts
         PyTorch tensors to TensorFlow tensors before reshaping.
@@ -489,7 +491,7 @@ class Reshape(Module):
         # Use PyTorch's reshape method for the operation
         return x.reshape(*shape)
 
-    def as_keras(self, x, shape):
+    def as_keras(self, x, shape: Union[Tuple[int], List[int]]):
         """
         Converts PyTorch tensors to TensorFlow tensors, if necessary, and performs the reshape
         operation using TensorFlow's reshape function. This method ensures compatibility and
@@ -528,7 +530,7 @@ class Flip(Module):
     operation, handling tensor conversions between PyTorch and TensorFlow as needed.
     """
 
-    def forward(self, x, dims):
+    def forward(self, x, dims: Union[List[int], Tuple[int]]):
         """
         Flips the input tensor along specified dimensions. If integrated with Keras, it
         converts PyTorch tensors to TensorFlow tensors before flipping.
@@ -546,7 +548,7 @@ class Flip(Module):
         # Use PyTorch's flip function for the operation
         return torch.flip(x, dims)
 
-    def as_keras(self, x, dims):
+    def as_keras(self, x, dims: Union[List[int], Tuple[int]]):
         """
         Converts PyTorch tensors to TensorFlow tensors, if necessary, and performs the flip
         operation using TensorFlow's reverse function. This method ensures compatibility and
@@ -685,8 +687,9 @@ class GenericRNN(nn.Module):
     A base class for customizable RNN models supporting RNN, GRU, and LSTM networks.
     """
 
-    def __init__(self, input_size, hidden_size, num_layers=1,
-                 bidirectional=False, bias=True, batch_first=True, dropout=0):
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1,
+                 bidirectional: bool = False, bias: bool = True,
+                 batch_first: bool = True, dropout: float = 0) -> None:
         super(GenericRNN, self).__init__()
         self.bidirectional = 2 if bidirectional else 1
         self.hidden_size = hidden_size
@@ -696,11 +699,14 @@ class GenericRNN(nn.Module):
         self.input_size = input_size
         self.batch_first = batch_first
 
-    def init_rnn(self, input_size, hidden_size, num_layers,
-                 bidirectional, bias, batch_first, dropout):
+    def init_rnn(self, input_size: int, hidden_size: int, num_layers: int,
+                 bidirectional: bool, bias: bool, batch_first: bool,
+                 dropout: float) -> None:
+
         raise NotImplementedError("Must be implemented by subclass.")
 
     def forward(self, x, h0=None, c0=None):
+
         raise NotImplementedError("Must be implemented by subclass.")
 
     def as_keras(self, x):

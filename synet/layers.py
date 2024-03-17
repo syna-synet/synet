@@ -117,31 +117,27 @@ class CoBNRLU(Module):
         return self.module(x)
 
 
-class SRNN(Module):
+class GenericSRNN(Module):
     """
-    SRNN (Separable RNN) processes a given tensor first along its X-axis using an RNN,
-    and then feeds the output of this RNN along the Y-axis to another RNN.
+    Implements GenericSRNN (Generic Separable RNN), which processes an input tensor sequentially
+    along its X-axis and Y-axis using two RNNs.
+    This approach first applies an RNN along the X-axis of the input, then feeds the resulting tensor
+    into another RNN along the Y-axis.
 
     Args:
-    - hidden_size_x (int): The number of features in the hidden state of the
-    X-axis RNN.
-    - hidden_size_y (int): The number of features in the hidden state of the
-    Y-axis RNN.
-    - num_layers (int, optional): Number of recurrent layers for each RNN.
-    Default: 1.
+        - hidden_size_x (int): The number of features in the hidden state of the X-axis RNN.
+        - hidden_size_y (int): The number of features in the hidden state of the Y-axis RNN,
+          which also determines the output size.
+        - num_layers (int, optional): Number of recurrent layers for each RNN, defaulting to 1.
 
     Returns:
-    - output (tensor): Output from the Y-axis RNN after processing the output of
-    the X-axis RNN.
-    - hn_x (tensor): Hidden state for the RNN processing along the X-axis after
-    the last timestep.
-    - hn_y (tensor): Hidden state for the RNN processing along the Y-axis after
-    the last timestep.
+        - output (tensor): The output tensor from the Y-axis RNN.
+        - hn_x (tensor): The final hidden state from the X-axis RNN.
+        - hn_y (tensor): The final hidden state from the Y-axis RNN.
     """
 
-    def __init__(self, hidden_size_x: int, hidden_size_y: int):
-        super(SRNN, self).__init__()
-
+    def __init__(self, hidden_size_x: int, hidden_size_y: int) -> None:
+        super(GenericSRNN, self).__init__()
         self.output_size_x = hidden_size_x
         self.output_size_y = hidden_size_y
 
@@ -149,51 +145,156 @@ class SRNN(Module):
         self.reshape = Reshape()
         self.get_shape = Shape()
 
-    def forward(self, x, rnn_x, rnn_y):
+    def forward(self, x, rnn_x: Module, rnn_y: Module):
         """
-        Forward pass for the HierarchicalRNN module.
+        Performs the forward pass for the HierarchicalRNN module.
 
         Args:
-        - x (tensor): Input tensor of shape [batch_size, channels, height, width]
+            - x (tensor): Input tensor with shape [batch_size, channels, height, width]
 
         Returns:
-        - output (tensor): Output from the Y-axis RNN.
+            - output (tensor): The final output tensor from the Y-axis RNN.
         """
-        N, C, H, W = self.get_shape(x)
-        # RNN over height (h)
+        batch_size, channels, H, W = self.get_shape(x)
 
-        # Rearrange the tensor to the shape (N*H, W, C)
+        # Rearrange the tensor to (batch_size*H, W, channels) for
+        # RNN processing over height This step prepares the data by aligning
+        # it along the width, treating each row separately.
+        # the keep_channel_last is true in case using channel last, but the
+        # assumption of the transpose dims is that the input is channels first,
+        # so is sign to keep the channels in the last dim.
         x_w = self.transpose(x, (0, 2, 3, 1),
-                             keras_keep_channel=True)  # (N, H, W, C )
-        x_w = self.reshape(x_w, (N * H, W, C))
+                             keep_channel_last=True)  # Rearranges to (batch_size, H, W, channels)
+        x_w = self.reshape(x_w, (batch_size * H, W, channels))
 
-        output_x, h = rnn_x(x_w)
+        output_x, _ = rnn_x(x_w)
 
-        # RNN over width (w)
-
-        # Rearrange the output from the first RNN to the shape (N*W, H, C)
-        output_x_reshape = self.reshape(output_x, (N, H, W, self.output_size_x))
+        # Prepare the output from the X-axis RNN for Y-axis processing by
+        # rearranging it to (batch_size*W, H, output_size_x),
+        # enabling RNN application over width.
+        output_x_reshape = self.reshape(output_x,
+                                        (batch_size, H, W, self.output_size_x))
         output_x_permute = self.transpose(output_x_reshape, (0, 2, 1, 3))
         output_x_permute = self.reshape(output_x_permute,
-                                        (N * W, H, self.output_size_x))
+                                        (batch_size * W, H, self.output_size_x))
 
-        output, h = rnn_y(output_x_permute)
+        output, _ = rnn_y(output_x_permute)
 
-        # Reshape to (batch, channels, height, width)
-        output = self.reshape(output, (N, W, H, self.output_size_y))
-        output = self.transpose(output, (0, 3, 2, 1), keras_keep_channel=True)
+        # Reshape and rearrange the final output to
+        # (batch_size, channels, height, width),
+        # restoring the original input dimensions with the transformed data.
+        output = self.reshape(output, (batch_size, W, H, self.output_size_y))
+        output = self.transpose(output, (0, 3, 2, 1), keep_channel_last=True)
 
         return output
 
 
-class WSBiSRNN(SRNN):
+class SRNN(GenericSRNN):
     """
-    WSBiSRNN (Weights Shared Bi-directional Separable RNN)
+    Implements the Separable Recurrent Neural Network (SRNN).
+    This model extends a standard RNN by introducing separability in processing.
     """
 
-    def __init__(self, input_size, hidden_size_x, hidden_size_y, base='RNN',
-                 num_layers=1, bias=True, batch_first=True,
-                 dropout=0):
+    def __init__(self, input_size: int, hidden_size_x: int, hidden_size_y: int,
+                 base: str = 'RNN', num_layers: int = 1, bias: bool = True,
+                 batch_first: bool = True, dropout: float = 0.0) -> None:
+        """
+        Initializes the SRNN model with the given parameters.
+
+        Parameters:
+        - input_size: The number of expected features in the input `x`
+        - hidden_size_x: The number of features in the hidden state `x`
+        - hidden_size_y: The number of features in the hidden state `y`
+        - base: The type of RNN to use (e.g., 'RNN', 'LSTM', 'GRU')
+        - num_layers: Number of recurrent layers. E.g., setting `num_layers=2`
+        would mean stacking two RNNs together
+        - bias: If `False`, then the layer does not use bias weights `b_ih` and
+        `b_hh`. Default: `True`
+        - batch_first: If `True`, then the input and output tensors are provided
+        as (batch, seq, feature). Default: `True`
+        - dropout: If non-zero, introduces a `Dropout` layer on the outputs of
+        each RNN layer except the last layer,
+                   with dropout probability equal to `dropout`. Default: 0
+
+        Creates two `WSBiRNN` instances for processing in `x` and `y`
+        dimensions, respectively.
+
+        From our experiments, we found that the best results were
+        obtained with the following parameters:
+        base='RNN', num_layers=1, bias=True, batch_first=True, dropout=0
+        """
+        super(SRNN, self).__init__(hidden_size_x, hidden_size_y)
+
+        self.rnn_x = RNN(input_size=input_size,
+                         hidden_size=hidden_size_x,
+                         num_layers=num_layers,
+                         base=base,
+                         bias=bias,
+                         batch_first=batch_first,
+                         dropout=dropout)
+
+        self.rnn_y = RNN(input_size=hidden_size_x,
+                         hidden_size=hidden_size_y,
+                         num_layers=num_layers,
+                         base=base,
+                         bias=bias,
+                         batch_first=batch_first,
+                         dropout=dropout)
+
+        # Output sizes of the model in the `x` and `y` dimensions.
+        self.output_size_x = hidden_size_x
+        self.output_size_y = hidden_size_y
+
+    def forward(self, x):
+        """
+        Defines the forward pass of the SRNN.
+
+        Parameters:
+        - x: The input tensor to the RNN
+
+        Returns:
+        - The output of the SRNN after processing the input tensor
+        `x` through both the `x` and `y` RNNs.
+        """
+        output = super().forward(x, self.rnn_x, self.rnn_y)
+        return output
+
+
+class WSBiSRNN(GenericSRNN):
+    """
+    Implements the Weights Shared Bi-directional Separable Recurrent Neural Network (WSBiSRNN).
+    This model extends a standard RNN by introducing bi-directionality and separability in processing,
+    with weight sharing to reduce the number of parameters.
+    """
+
+    def __init__(self, input_size: int, hidden_size_x: int, hidden_size_y: int,
+                 base: str = 'RNN', num_layers: int = 1, bias: bool = True,
+                 batch_first: bool = True, dropout: float = 0.0) -> None:
+        """
+        Initializes the WSBiSRNN model with the given parameters.
+
+        Parameters:
+        - input_size: The number of expected features in the input `x`
+        - hidden_size_x: The number of features in the hidden state `x`
+        - hidden_size_y: The number of features in the hidden state `y`
+        - base: The type of RNN to use (e.g., 'RNN', 'LSTM', 'GRU')
+        - num_layers: Number of recurrent layers. E.g., setting `num_layers=2`
+        would mean stacking two RNNs together
+        - bias: If `False`, then the layer does not use bias weights `b_ih` and
+        `b_hh`. Default: `True`
+        - batch_first: If `True`, then the input and output tensors are provided
+        as (batch, seq, feature). Default: `True`
+        - dropout: If non-zero, introduces a `Dropout` layer on the outputs of
+        each RNN layer except the last layer,
+                   with dropout probability equal to `dropout`. Default: 0
+
+        Creates two `WSBiRNN` instances for processing in `x` and `y`
+        dimensions, respectively.
+
+        From our experiments, we found that the best results were
+        obtained with the following parameters:
+        base='RNN', num_layers=1, bias=True, batch_first=True, dropout=0
+        """
         super(WSBiSRNN, self).__init__(hidden_size_x, hidden_size_y)
 
         self.rnn_x = WSBiRNN(input_size=input_size,
@@ -212,10 +313,20 @@ class WSBiSRNN(SRNN):
                              batch_first=batch_first,
                              dropout=dropout)
 
+        # Output sizes of the model in the `x` and `y` dimensions.
         self.output_size_x = hidden_size_x
         self.output_size_y = hidden_size_y
 
     def forward(self, x):
+        """
+        Defines the forward pass of the WSBiSRNN.
+
+        Parameters:
+        - x: The input tensor to the RNN
+
+        Returns:
+        - The output of the WSBiSRNN after processing the input tensor `x` through both the `x` and `y` RNNs.
+        """
         output = super().forward(x, self.rnn_x, self.rnn_y)
         return output
 
@@ -235,9 +346,9 @@ class WSBiRNN(Module):
         add (Add): An instance of the Add class for combining forward and reverse outputs.
     """
 
-    def __init__(self, input_size, hidden_size, num_layers=1,
-                 base='RNN', bias=True, batch_first=True,
-                 dropout=0):
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1,
+                 base: str = 'RNN', bias: bool = True, batch_first: bool = True,
+                 dropout: float = 0.0) -> None:
         """
         Initializes the BiDirectionalRNN module with the specified parameters.
 
@@ -268,7 +379,6 @@ class WSBiRNN(Module):
                                      batch_first=batch_first,
                                      dropout=dropout,
                                      bidirectional=False)
-        self.hidden_size = hidden_size
 
         # Initialize utilities for flipping sequences and combining outputs
         self.flip = Flip()
