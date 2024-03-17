@@ -197,7 +197,8 @@ class SRNN(GenericSRNN):
 
     def __init__(self, input_size: int, hidden_size_x: int, hidden_size_y: int,
                  base: str = 'RNN', num_layers: int = 1, bias: bool = True,
-                 batch_first: bool = True, dropout: float = 0.0) -> None:
+                 batch_first: bool = True, dropout: float = 0.0,
+                 bidirectional: bool = False) -> None:
         """
         Initializes the SRNN model with the given parameters.
 
@@ -215,8 +216,11 @@ class SRNN(GenericSRNN):
         - dropout: If non-zero, introduces a `Dropout` layer on the outputs of
         each RNN layer except the last layer,
                    with dropout probability equal to `dropout`. Default: 0
+       - bidirectional: If `True`, becomes a torch implementation of
+       bidirectional RNN (two RNN blocks, one for the forward pass and one
+       for the backward). Default: `False`
 
-        Creates two `WSBiRNN` instances for processing in `x` and `y`
+        Creates two `RNN` instances for processing in `x` and `y`
         dimensions, respectively.
 
         From our experiments, we found that the best results were
@@ -225,21 +229,26 @@ class SRNN(GenericSRNN):
         """
         super(SRNN, self).__init__(hidden_size_x, hidden_size_y)
 
-        self.rnn_x = RNN(input_size=input_size,
-                         hidden_size=hidden_size_x,
-                         num_layers=num_layers,
-                         base=base,
-                         bias=bias,
-                         batch_first=batch_first,
-                         dropout=dropout)
+        # Dictionary mapping base types to their respective PyTorch class
+        RNN_bases = {'RNN': RNN,
+                     'GRU': GRU,
+                     'LSTM': LSTM}
 
-        self.rnn_y = RNN(input_size=hidden_size_x,
-                         hidden_size=hidden_size_y,
-                         num_layers=num_layers,
-                         base=base,
-                         bias=bias,
-                         batch_first=batch_first,
-                         dropout=dropout)
+        self.rnn_x = RNN_bases[base](input_size=input_size,
+                                     hidden_size=hidden_size_x,
+                                     num_layers=num_layers,
+                                     bias=bias,
+                                     batch_first=batch_first,
+                                     dropout=dropout,
+                                     bidirectional=bidirectional)
+
+        self.rnn_y = RNN_bases[base](input_size=hidden_size_x,
+                                     hidden_size=hidden_size_y,
+                                     num_layers=num_layers,
+                                     bias=bias,
+                                     batch_first=batch_first,
+                                     dropout=dropout,
+                                     bidirectional=bidirectional)
 
         # Output sizes of the model in the `x` and `y` dimensions.
         self.output_size_x = hidden_size_x
@@ -260,7 +269,7 @@ class SRNN(GenericSRNN):
         return output
 
 
-class WSBiSRNN(GenericSRNN):
+class SWSBiRNN(GenericSRNN):
     """
     Implements the Weights Shared Bi-directional Separable Recurrent Neural Network (WSBiSRNN).
     This model extends a standard RNN by introducing bi-directionality and separability in processing,
@@ -295,7 +304,7 @@ class WSBiSRNN(GenericSRNN):
         obtained with the following parameters:
         base='RNN', num_layers=1, bias=True, batch_first=True, dropout=0
         """
-        super(WSBiSRNN, self).__init__(hidden_size_x, hidden_size_y)
+        super(SWSBiRNN, self).__init__(hidden_size_x, hidden_size_y)
 
         self.rnn_x = WSBiRNN(input_size=input_size,
                              hidden_size=hidden_size_x,
@@ -371,14 +380,13 @@ class WSBiRNN(Module):
                      'LSTM': LSTM}
 
         # Initialize the forward RNN module
-        self.rnn = RNN_bases['base'](input_size=input_size,
-                                     hidden_size=hidden_size,
-                                     num_layers=num_layers,
-                                     base=base,
-                                     bias=bias,
-                                     batch_first=batch_first,
-                                     dropout=dropout,
-                                     bidirectional=False)
+        self.rnn = RNN_bases[base](input_size=input_size,
+                                   hidden_size=hidden_size,
+                                   num_layers=num_layers,
+                                   bias=bias,
+                                   batch_first=batch_first,
+                                   dropout=dropout,
+                                   bidirectional=False)
 
         # Initialize utilities for flipping sequences and combining outputs
         self.flip = Flip()

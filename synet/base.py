@@ -882,19 +882,18 @@ class GenericRNN(nn.Module):
 class RNN(GenericRNN):
     def __init__(self, *args, **kwargs):
         super(RNN, self).__init__(*args, **kwargs)
-        self.rnn = nn.RNN(input_size=self.input_size,
-                          hidden_size=self.hidden_size,
-                          num_layers=self.num_layers, bias=self.bias,
-                          batch_first=self.batch_first, dropout=self.dropout,
-                          bidirectional=self.bidirectional)
+        self.rnn = nn.RNN(input_size=kwargs['input_size'],
+                          hidden_size=kwargs['hidden_size'],
+                          num_layers=kwargs['num_layers'],
+                          bias=kwargs['bias'],
+                          batch_first=kwargs['batch_first'],
+                          dropout=kwargs['dropout'],
+                          bidirectional=kwargs['bidirectional'])
 
     def forward(self, x, h0=None):
         if askeras.use_keras:
             return self.as_keras(x)
 
-        if h0 is None:
-            h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1),
-                             x.size(0), self.hidden_size, device=x.device)
         out, h = self.rnn(x, h0)
         return out, h
 
@@ -944,19 +943,18 @@ class RNN(GenericRNN):
 class GRU(GenericRNN):
     def __init__(self, *args, **kwargs):
         super(GRU, self).__init__(*args, **kwargs)
-        self.rnn = nn.GRU(input_size=self.input_size,
-                          hidden_size=self.hidden_size,
-                          num_layers=self.num_layers, bias=self.bias,
-                          batch_first=self.batch_first, dropout=self.dropout,
-                          bidirectional=self.bidirectional)
+        self.rnn = nn.GRU(input_size=kwargs['input_size'],
+                          hidden_size=kwargs['hidden_size'],
+                          num_layers=kwargs['num_layers'],
+                          bias=kwargs['bias'],
+                          batch_first=kwargs['batch_first'],
+                          dropout=kwargs['dropout'],
+                          bidirectional=kwargs['bidirectional'])
 
     def forward(self, x, h0=None):
         if askeras.use_keras:
             return self.as_keras(x)
 
-        if h0 is None:
-            h0 = torch.zeros(self.num_layers * (2 if self.bidirectional else 1),
-                             x.size(0), self.hidden_size, device=x.device)
         out, h = self.rnn(x, h0)
         return out, h
 
@@ -1006,24 +1004,18 @@ class GRU(GenericRNN):
 class LSTM(GenericRNN):
     def __init__(self, *args, **kwargs):
         super(LSTM, self).__init__(*args, **kwargs)
-        self.rnn = nn.GRU(input_size=self.input_size,
-                          hidden_size=self.hidden_size,
-                          num_layers=self.num_layers, bias=self.bias,
-                          batch_first=self.batch_first, dropout=self.dropout,
-                          bidirectional=self.bidirectional)
+        self.rnn = nn.GRU(input_size=kwargs['input_size'],
+                          hidden_size=kwargs['hidden_size'],
+                          num_layers=kwargs['num_layers'],
+                          bias=kwargs['bias'],
+                          batch_first=kwargs['batch_first'],
+                          dropout=kwargs['dropout'],
+                          bidirectional=kwargs['bidirectional'])
 
     def forward(self, x, h0=None, c0=None):
         if askeras.use_keras:
             return self.as_keras(x)
 
-        if h0 is None:
-            h0 = torch.zeros(self.bidirectional * self.num_layers,
-                             x.size(0),
-                             self.hidden_size).to(x.device)
-        if c0 is None:
-            c0 = torch.zeros(self.bidirectional * self.num_layers,
-                             x.size(0),
-                             self.hidden_size).to(x.device)
         out, h = self.rnn(x, (h0, c0))
 
         return out, h
