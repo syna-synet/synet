@@ -23,9 +23,9 @@ def diff_arr(out1, out2):
     return absolute(out1 - out2).max()
 
 
-def t_actv_to_k_helper(actv):
-    # if isinstance(actv, (tuple, list)):
-    #     return tuple(t_actv_to_k_helper(a) for a in actv)
+def t_actv_to_k(actv):
+    if isinstance(actv, (tuple, list)):
+        return [t_actv_to_k(a) for a in actv]
     if len(actv.shape) == 4:
         tp = 0, 2, 3, 1
     elif len(actv.shape) == 3:
@@ -35,9 +35,12 @@ def t_actv_to_k_helper(actv):
     return actv.detach().numpy().transpose(*tp)
 
 
-def t_actv_to_k(actv):
-    return [t_actv_to_k_helper(a) for a in actv] if isinstance(actv, (tuple, list)) \
-        else t_actv_to_k_helper(actv)
+def k_to_numpy(actv):
+    if isinstance(actv, (list, tuple)):
+        return [k_to_numpy(k) for k in actv]
+    if hasattr(actv, "numpy"):
+        return actv.numpy()
+    return actv
 
 
 def validate_layer(layer, torch_inp, **akwds):
@@ -47,11 +50,7 @@ return max error between two output activations
     """
     tout = layer(torch_inp[:])
     with askeras(imgsz=torch_inp[0].shape[-2:], **akwds):
-        kout = layer(t_actv_to_k(torch_inp))
-    if isinstance(kout, (list, tuple)):
-        kout = [k.numpy() for k in kout]
-    else:
-        kout = kout.numpy()
+        kout = k_to_numpy(layer(t_actv_to_k(torch_inp)))
     if isinstance(tout, dict):
         assert len(tout) == len(kout)
         return max(diff_arr(t_actv_to_k(tout[key]), kout[key])
@@ -75,7 +74,8 @@ difference between all configurations.
                                   [rand(batch_size, in_channels, *s)*2-1
                                    for s in shape]
                                   if len(shape) and isinstance(shape[0], tuple)
-                                  else rand(batch_size, in_channels, *shape)*2-1,
+                                  else rand(batch_size, in_channels, *shape
+                                            )*2-1,
                                   **akwds)
                    for shape in shapes)
     print("max_diff:", max_diff)
@@ -148,24 +148,25 @@ def test_ultralytics_detect():
         layer.format = "tflite"
         layer.stride[0], layer.stride[1] = 1, 2
         validate(layer,
-                 shapes=[(( 4,  6), (2, 3)),
-                         (( 5,  7), (3, 4)),
-                         (( 6,  8), (3, 4))],
+                 shapes=[((4, 6), (2, 3)),
+                         ((5, 7), (3, 4)),
+                         ((6, 8), (3, 4))],
                  xywh=True)
+
 
 def test_ultralytics_pose():
     from synet.backends.ultralytics import Pose
     for sm_split in ((True, None), (2, True)):
-        for kpt_shape in ([17, 2], [17,3]):
+        for kpt_shape in ([17, 2], [17, 3]):
             layer = Pose(80, kpt_shape, (IN_CHANNELS, IN_CHANNELS), *sm_split)
             layer.eval()
             layer.export = True
             layer.format = "tflite"
             layer.stride[0], layer.stride[1] = 1, 2
             validate(layer,
-                     shapes=[(( 4,  6), (2, 3)),
-                             (( 5,  7), (3, 4)),
-                             (( 6,  8), (3, 4))],
+                     shapes=[((4, 6), (2, 3)),
+                             ((5, 7), (3, 4)),
+                             ((6, 8), (3, 4))],
                      xywh=True)
 
 
@@ -182,6 +183,7 @@ def test_ultralytics_segment():
                      ((12, 12), (6, 6))],
              xywh=True)
 
+
 def test_ultralytics_classify():
     from synet.backends.ultralytics import Classify
     layer = Classify(None, c1=IN_CHANNELS, c2=OUT_CHANNELS)
@@ -190,3 +192,7 @@ def test_ultralytics_classify():
     layer.format = 'tflite'
     validate(layer)
 
+
+def test_channelslice():
+    from synet.base import ChannelSlice
+    validate(ChannelSlice(slice(4, 8)), in_channels=12)

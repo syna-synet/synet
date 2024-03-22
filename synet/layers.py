@@ -17,7 +17,7 @@ from torch.nn import ModuleList
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
                    Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
-                   Shape)
+                   Shape, ModuleList, ChannelSlice)
 
 
 # because this module only reinterprets Conv2d parameters, the test
@@ -42,7 +42,8 @@ class InvertedResidual(Module):
     """
 
     def __init__(self, in_channels, expansion_factor,
-                 out_channels=None, stride=1, kernel_size=3):
+                 out_channels=None, stride=1, kernel_size=3,
+                 skip=True):
         """This inverted residual takes in_channels to
         in_channels*expansion_factor with a 3x3 convolution.  Then
         after a batchnorm and ReLU, the activations are taken back
@@ -65,7 +66,7 @@ class InvertedResidual(Module):
                                         kernel_size=1),
                                  BatchNorm(out_channels))
         self.stride = stride
-        self.cheq = in_channels == out_channels
+        self.cheq = in_channels == out_channels and skip
         assert self.stride in (1, 2)
 
     def forward(self, x):
@@ -95,15 +96,14 @@ out of that layer.  num (default 4) convolutions are used in total.
                                                     out_channels,
                                                     3, bias=True),
                                              self.relu)
-                                  for out_channels in out_channels)
-                                )
+                                  for out_channels in out_channels))
 
     def forward(self, x):
         return self.model(x)
 
 
 class CoBNRLU(Module):
-    def __init__(self, in_channels, out_channels, kernel_size,
+    def __init__(self, in_channels, out_channels, kernel_size=3,
                  stride=1, bias=False, padding=True, groups=1,
                  max_val=6, name=None):
         super().__init__()
@@ -416,3 +416,26 @@ class WSBiRNN(Module):
 
         # Combine the outputs from the forward and reverse directions
         return self.add(out_reverse_flip, out_forward), _
+
+
+class S2f(Module):
+    # Synaptics C2f.  Constructed from tflite inspection
+    def __init__(self, in_channels, n, out_channels=None, nslice=None):
+        super().__init__()
+        if out_channels is None:
+            out_channels = in_channels
+        if nslice is not None:
+            c = nslice
+        else:
+            c = in_channels // 2
+        self.slice = ChannelSlice(slice(c))
+        self.ir = ModuleList([InvertedResidual(c, 1) for _ in range(n)])
+        self.cat = Cat()
+        self.decode = CoBNRLU(in_channels + n*c, out_channels, bias=True)
+
+    def forward(self, x):
+        out = [x]
+        y = self.slice(x)
+        for ir in self.ir:
+            out.append(y := ir(y))
+        return self.decode(self.cat(out))

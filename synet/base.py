@@ -13,7 +13,7 @@ from torch import cat as torch_cat, minimum, tensor, no_grad
 from torch.nn import (Module as Torch_Module,
                       Conv2d as Torch_Conv2d,
                       BatchNorm2d as Torch_Batchnorm,
-                      ModuleList as Torch_Modulelist,
+                      ModuleList,
                       ReLU as Torch_ReLU,
                       ConvTranspose2d as Torch_ConvTranspose2d,
                       Upsample as Torch_Upsample,
@@ -339,7 +339,7 @@ class Upsample(Module):
 class Sequential(Module):
     def __init__(self, *sequence):
         super().__init__()
-        self.ml = Torch_Modulelist(sequence)
+        self.ml = ModuleList(sequence)
 
     def forward(self, x):
         for layer in self.ml:
@@ -1061,3 +1061,17 @@ class LSTM(GenericRNN):
         """
 
         self.generic_set_keras_weights(keras_model, 'LSTM')
+
+
+class ChannelSlice(Module):
+    def __init__(self, slice):
+        super().__init__()
+        self.slice = slice
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return self.as_keras(x)
+        return x[:, self.slice]
+
+    def as_keras(self, x):
+        return x[(len(x.shape)-1)*(slice(None),)+(self.slice,)]
