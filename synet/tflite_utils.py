@@ -69,10 +69,12 @@ def tf_run(tflite, img, conf_thresh=.25, iou_thresh=.7,
     """
 
     # initialize tflite interpreter.
-    interpreter = lite.Interpreter(**{"model_path"
-                                      if isinstance(tflite, str) else
-                                      "model_content"
-                                      : tflite})
+    interpreter = lite.Interpreter(
+        **{"model_path" if isinstance(tflite, str)
+           else "model_content": tflite,
+           'experimental_op_resolver_type':
+           lite.experimental.OpResolverType.BUILTIN_REF}
+    )
 
     # read the image if given as path
     if isinstance(img, str):
