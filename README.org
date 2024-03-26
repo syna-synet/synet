@@ -15,6 +15,12 @@
   those models.  Using Ultralytics as a backend, you can generate
   trained vision models optimized for our chips.
 
+  This code is GPL, and the Ultralytics backend is AGPL, but the
+  output of this code are tflite files.  These output tflite files are
+  data that is not covered by the copyright on the code of either code
+  base.  Consequently, the respective licenses of the code do not
+  apply to the output tflite files.
+
 * Performance
 
   The following table summarizes model performance on the person class
