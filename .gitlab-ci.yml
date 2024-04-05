@@ -3,5 +3,5 @@ run:
     - bash <(curl -s -L https://detect.synopsys.com/detect7.sh) --blackduck.url="${HUB_URL}" \
         --blackduck.api.token="${HUB_TOKEN}" \
         --blackduck.trust.cert=true \
-        --detect.project.name=${CI_PROJECT_NAME} \
+        --detect.project.name=SyNet \
         --detect.project.version.name=${CI_COMMIT_BRANCH}
