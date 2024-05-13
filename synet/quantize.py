@@ -68,6 +68,8 @@ def get_tflite(backend, image_shape, model_path, data, number,
          no_grad():
         kmodel = Model(inp, ptmodel(inp))
 
+    print('model params:', kmodel.count_params())
+
     # quantize the model
     return quantize(kmodel, data, image_shape, number,
                     splitext(model_path)[0]+".tflite",
