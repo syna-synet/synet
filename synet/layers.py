@@ -12,8 +12,6 @@ should add a test case for it in tests/test_keras.py.
 
 """
 from typing import Union, Tuple, Optional
-import torch
-from torch.nn import ModuleList
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
                    Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
@@ -420,7 +418,8 @@ class WSBiRNN(Module):
 
 class S2f(Module):
     # Synaptics C2f.  Constructed from tflite inspection
-    def __init__(self, in_channels, n, out_channels=None, nslice=None):
+    def __init__(self, in_channels, n, out_channels=None, nslice=None,
+                 skip=True):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
@@ -429,7 +428,8 @@ class S2f(Module):
         else:
             c = in_channels // 2
         self.slice = ChannelSlice(slice(c))
-        self.ir = ModuleList([InvertedResidual(c, 1) for _ in range(n)])
+        self.ir = ModuleList([InvertedResidual(c, 1, skip=skip is True)
+                              for _ in range(n)])
         self.cat = Cat()
         self.decode = CoBNRLU(in_channels + n*c, out_channels, bias=True)
 
