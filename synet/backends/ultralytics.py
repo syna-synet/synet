@@ -17,6 +17,7 @@ from ultralytics.nn.modules.head import (Pose as Torch_Pose,
                                          Detect as Torch_Detect,
                                          Segment as Torch_Segment,
                                          Classify as Torch_Classify)
+from ultralytics.utils import dist
 from ultralytics.utils.ops import non_max_suppression, process_mask
 from ultralytics.utils.checks import check_imgsz
 
@@ -219,13 +220,9 @@ class Segment(Torch_Segment, Detect):
         self.detect = Detect.forward
         self.proto = Proto(ch[0], self.npr, self.nm)  # protos
         c4 = max(ch[0] // 4, self.nm)
-        for x in ch:
-            if c4 != self.nm:
-                print("ultralytics normally uses", c4,
-                      "hidden filters.  Using", self.nm, "instead.")
-        self.cv4 = ModuleList(Sequential(CoBNRLU(x, self.nm, 3),
-                                         CoBNRLU(self.nm, self.nm, 3),
-                                         Conv2d(self.nm, nm, 1))
+        self.cv4 = ModuleList(Sequential(CoBNRLU(x, c4, 3),
+                                         CoBNRLU(c4, c4, 3),
+                                         Conv2d(c4, self.nm, 1))
                               for x in ch)
 
     def forward(self, x):
@@ -301,6 +298,17 @@ class Backend(BaseBackend):
         tasks.Detect = Detect
         tasks.Segment = Segment
         tasks.Classify = Classify
+        orig_ddp_file = dist.generate_ddp_file
+
+        def generate_ddp_file(trainer):
+            fname = orig_ddp_file(trainer)
+            fstr = open(fname).read()
+            open(fname, 'w').write(f"""\
+from synet.backends import get_backend
+get_backend('ultralytics').patch()
+{fstr}""")
+            return fname
+        dist.generate_ddp_file = generate_ddp_file
         if model_path is not None and model_path.endswith('tflite'):
             print('SyNet: model provided is tflite.  Modifying validators'
                   ' to anticipate tflite output')
@@ -454,19 +462,19 @@ def main():
         if val.startswith("model="):
             model = backend.maybe_grab_from_zoo(val.split("=")[1])
             argv[ind] = "model="+model
-            break
-    else:
-        raise ValueError("no model specified")
 
-    # add synet ml modules to ultralytics
-    backend.patch(model_path=model)
+            # add synet ml modules to ultralytics
+            backend.patch(model_path=model)
 
-    # add imgsz if not explicitly given
-    for val in argv:
-        if val.startswith("imgsz="):
+            # add imgsz if not explicitly given
+            for val in argv:
+                if val.startswith("imgsz="):
+                    break
+            else:
+                argv.append(f"imgsz={max(backend.get_shape(model))}")
+
             break
-    else:
-        argv.append(f"imgsz={max(backend.get_shape(model))}")
+
 
     # launch ultralytics
     try:
