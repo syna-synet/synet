@@ -87,7 +87,7 @@
   To install via pip:
 
   #+begin_src shell
-    pip install "git+ssh://git@gitlab.synaptics.com:wssd-ai-algorithms/synet-fork.git[ultra]"
+    pip install "synet[ultra] @ git+ssh://git@gitlab.synaptics.com/wssd-ai-algorithms/synet-fork.git"
   #+end_src
 
   or if you have cloned to a local copy of the repository:

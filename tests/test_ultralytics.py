@@ -1,6 +1,4 @@
-from os import chdir  # , listdir
-# from os.path import join, dirname
-
+from os import chdir
 from synet.backends import get_backend
 from synet.quantize import main
 
