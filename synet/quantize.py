@@ -73,11 +73,11 @@ def get_tflite(backend, image_shape, model_path, data, number,
     # quantize the model
     return quantize(kmodel, data, image_shape, number,
                     splitext(model_path)[0]+".tflite",
-                    channels)
+                    channels, backend=backend)
 
 
 def quantize(kmodel, data, image_shape, N=500, out_path=None, channels=1,
-             generator=None):
+             generator=None, backend=None):
     """Given a keras model, kmodel, and data yaml at data, quantize
 using N samples reshaped to image_shape and place the output model at
 out_path.
@@ -96,7 +96,7 @@ out_path.
             lambda: phony_data(image_shape, channels)
     else:
         converter.representative_dataset = \
-            lambda: representative_data(data, image_shape, N, channels)
+            lambda: representative_data(backend.get_data(data), image_shape, N, channels)
 
     # quantize
     tflite_quant_model = converter.convert()
@@ -114,9 +114,7 @@ def representative_data(data, image_shape, N, channels):
 samples reshaped to image_shape.
 
     """
-    from yolov5.utils.general import check_dataset
-    data_dict = check_dataset(data)
-    path = data_dict.get('test', data_dict['val'])
+    path = data.get('test', data['val'])
     f = []
     for p in path if isinstance(path, list) else [path]:
         if isdir(p):

@@ -55,6 +55,14 @@ class Backend:
     def get_configs(self):
         return get_configs(self.name)
 
+    def get_data(self, data):
+        """return a {split:files} where files is either a string or
+        list of strings denoting path(s) to file(s) or
+        directory(ies). Files should be newline-seperated lists of
+        image paths, and directories should (recursively) contain only
+        images or directories."""
+        raise NotImplementedError("Please subclass and implement")
+
 
 def get_backend(name):
     return import_module(f".{name}", __name__).Backend()

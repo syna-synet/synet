@@ -7,6 +7,7 @@ from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
+from ultralytics.data.utils import check_det_dataset, check_cls_dataset
 from ultralytics.engine import validator, predictor
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
@@ -451,6 +452,17 @@ get_backend('ultralytics').patch()
         if model.task == 'segment':
             return preds, proto
         return preds
+
+    def get_data(self, data):
+        try:
+            return check_det_dataset(data)
+        except Exception as e:
+            try:
+                return check_cls_dataset(data)
+            except Exception as e2:
+                print("unable to load data as classification or detection dataset")
+                print(e2)
+                raise e
 
 
 def main():
