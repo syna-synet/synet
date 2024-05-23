@@ -104,7 +104,7 @@ def tf_run(tflite, img, conf_thresh=.25, iou_thresh=.7,
     preds = concat_reshape(preds, task)
 
     # perform nms
-    return apply_nms(preds, conf_thresh, iou_thresh, backend)
+    return apply_nms(preds, conf_thresh, iou_thresh)
 
 
 def run_interpreter(interpreter: Optional[lite.Interpreter],
@@ -235,7 +235,7 @@ def concat_reshape(model_output: List[ndarray],
         # instance that survives NMS, generate the segmentation (only
         # HxW for each instance) by taking the iner product of seg
         # with each pixel in proto.
-        return cat((bbox, *cls, seg), axis=-1), moveaxis(proto, -1, 0)
+        return cat((bbox, *cls, seg), axis=-1), proto
     if task == 'pose':
         return cat((bbox, *cls, cat((kpts, pres), -1
                                     ).reshape(-1, num_kpts * 3)),
@@ -244,8 +244,7 @@ def concat_reshape(model_output: List[ndarray],
         return cat((bbox, *cls), axis=-1)
 
 
-def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float,
-              backend):
+def apply_nms(preds: ndarray, conf_thresh: float, iou_thresh: float):
     """Apply NMS on ndarray prepared model output
 
     preds : ndarray or tuple of ndarray
