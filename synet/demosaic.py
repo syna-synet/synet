@@ -1,4 +1,4 @@
-from .base import Module, Conv2d, Sequential
+from .base import Module, Conv2d
 
 from torch import zeros, tensor, arange, where, float32
 

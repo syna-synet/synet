@@ -15,7 +15,7 @@ from typing import Union, Tuple, Optional
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
                    Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
-                   Shape, ModuleList, ChannelSlice)
+                   Shape, ModuleList, ChannelSlice, Mosaic)
 
 
 # because this module only reinterprets Conv2d parameters, the test

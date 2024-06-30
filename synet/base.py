@@ -9,7 +9,7 @@ layers.py:
 """
 
 from typing import Tuple, Union, Optional, List
-from torch import cat as torch_cat, minimum, tensor, no_grad
+from torch import cat as torch_cat, minimum, tensor, no_grad, empty
 from torch.nn import (Module as Torch_Module,
                       Conv2d as Torch_Conv2d,
                       BatchNorm2d as Torch_Batchnorm,
@@ -54,6 +54,14 @@ class Module(Torch_Module):
         if askeras.use_keras and hasattr(self, 'as_keras'):
             return self.as_keras(x)
         return self.module(x)
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError as e:
+            if name == 'module':
+                raise e
+            return getattr(self.module, name)
 
 
 class Conv2d(Module):
@@ -221,6 +229,24 @@ class ConvTranspose2d(Module):
                          if self.use_bias else
                          [weight])
         return conv(x)
+
+
+class Mosaic(Module):
+    def __init__(self, bayer_pattern):
+        super().__init__()
+        self.bayer_pattern = tensor(['rgb'.index(c)
+                                     for c in bayer_pattern.lower()])
+        self.rows = tensor([0, 0, 1, 1])
+        self.cols = tensor([0, 1, 0, 1])
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return x
+        *b, c, h, w = x.shape
+        y = empty((*b, 1, h, w), dtype=x.dtype, device=x.device)
+        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
+            y[..., 0, yoff::2, xoff::2] = x[..., chan, yoff::2, xoff::2]
+        return y
 
 
 class Grayscale(Module):

@@ -15,7 +15,7 @@ from typing import Optional, List
 from cv2 import (imread, rectangle, addWeighted, imwrite, resize,
                  circle, putText, FONT_HERSHEY_TRIPLEX)
 from numpy import (newaxis, ndarray, int8, float32 as npfloat32,
-                   concatenate as cat, max as npmax, argmax, moveaxis)
+                   concatenate as cat, max as npmax, argmax, empty)
 from tensorflow import lite
 from torch import tensor, float32 as torchfloat32, sigmoid, tensordot, \
     repeat_interleave
@@ -178,10 +178,6 @@ def concat_reshape(model_output: List[ndarray],
     a more efficient implementation, you may want to perform
     confidence thresholding and nms on the boxes and scores, masking
     other tensor appropriately, before reshaping and concatenating.
-
-    Also, for segmentation, the proto mask is transposed (moveaxis())
-    to match the pytorch convention.  When transcribing this code for
-    other implementations, you may not want this behavior.
 
     """
 
@@ -346,6 +342,22 @@ def main(args=None):
     elif opt.task == 'classify':
         putText(img, str(*preds), (20, 40), FONT_HERSHEY_TRIPLEX, 1.0, (0, 0, 0))
     imwrite(opt.task+'.png', img)
+
+
+def get_mosaic(bayer_pattern):
+    """convenience method for turning RGB image into Bayer for
+    simulating Bayer model with RGB images"""
+    bayer_pattern = ndarray(['rgb'.index(c)
+                            for c in bayer_pattern.lower()])
+    rows = ndarray([0, 0, 1, 1])
+    cols = ndarray([0, 1, 0, 1])
+
+    def mosaic(image):
+        out = empty((*image.shape[:2], 1))
+        for yoff, xoff, chan in zip(rows, cols, bayer_pattern):
+            out[yoff::2, xoff::2] = image[yoff::2, xoff::2, chan]
+        return out
+    return mosaic
 
 
 if __name__ == '__main__':
