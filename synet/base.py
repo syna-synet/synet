@@ -147,7 +147,7 @@ class Conv2d(Module):
                             padding=self.padding,
                             use_bias=self.use_bias,
                             groups=self.groups)
-        conv.build(x.shape[1:])
+        conv.build(x.shape)
         if isinstance(self.conv, Torch_Conv2d):
             tconv = self.conv
         else:
