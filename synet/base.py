@@ -63,6 +63,12 @@ class Module(Torch_Module):
                 raise e
             return getattr(self.module, name)
 
+    def to_keras(self, imgsz, in_channels=1, batch_size=1, **kwds):
+        from keras import Input, Model
+        inp = Input(imgsz+[in_channels], batch_size=batch_size)
+        with askeras(imgsz=imgsz, **kwds):
+            return Model(inp, self(inp))
+
 
 class Conv2d(Module):
     """Convolution operator which ensures padding is done equivalently
