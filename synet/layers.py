@@ -15,12 +15,12 @@ from typing import Union, Tuple, Optional
 
 from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
                    Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
-                   Shape, ModuleList, ChannelSlice, Mosaic)
+                   Shape, ModuleList, ChannelSlice, Mosaic, DepthwiseConv2d)
 
 
 # because this module only reinterprets Conv2d parameters, the test
 # case is omitted.
-class DepthwiseConv2d(Conv2d):
+class DepthwiseConv2d(DepthwiseConv2d):
     def __init__(self,
                  channels: int,
                  kernel_size: Union[int, Tuple[int, int]],

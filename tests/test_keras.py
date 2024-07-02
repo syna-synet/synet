@@ -96,6 +96,18 @@ def test_conv2d():
                                     stride, bias, padding),
                              in_channels=in_channels)
 
+def test_dw_conv2d():
+    from synet.layers import DepthwiseConv2d
+    print("testing dw Conv2d")
+    channels = 32
+    for bias in True, False:
+        for kernel, stride in ((1, 1), (2, 1), (3, 1), (3, 2), (4, 1),
+                               (4, 2), (4, 3)):
+            for padding in True, False:
+                validate(DepthwiseConv2d(channels, kernel,
+                                stride, bias, padding),
+                            in_channels=channels)
+
 
 def test_convtranspose():
     from synet.base import ConvTranspose2d

@@ -198,6 +198,35 @@ class Conv2d(Module):
 # pytorch conv2d, and instead finds the nested conv2d.
 Conv2d.__name__ = "Synet_Conv2d"
 
+class DepthwiseConv2d(Conv2d):
+    """DepthwiseConv2d operator implemented as a group convolution for
+       pytorch and DepthwiseConv2d operator for keras
+    """
+    def as_keras(self, x):
+        if askeras.kwds.get('demosaic'):
+            from .demosaic import Demosaic, reshape_conv
+            demosaic = Demosaic(*askeras.kwds['demosaic'].split('-'))
+            del askeras.kwds['demosaic']
+            return reshape_conv(self)(demosaic(x))
+        from keras.layers import DepthwiseConv2D as Keras_DWConv2d
+        assert x.shape[-1] == self.in_channels, (x.shape, self.in_channels)
+        conv = Keras_DWConv2d(kernel_size=self.kernel_size,
+                              strides=self.stride,
+                              padding=self.padding,
+                              use_bias=self.use_bias)
+        conv.build(x.shape)
+        if isinstance(self.conv, Torch_Conv2d):
+            tconv = self.conv
+        else:
+            # for NNI compatibility
+            tconv = self.conv.module
+        weight = tconv.weight.detach().numpy().transpose(2, 3, 0, 1)
+        conv.set_weights([weight, tconv.bias.detach().numpy()]
+                         if self.use_bias else
+                         [weight])
+        return conv(x)
+
+DepthwiseConv2d.__name__ = "Synet_DepthwiseConv2d"
 
 class ConvTranspose2d(Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride, padding,
