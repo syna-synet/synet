@@ -8,7 +8,7 @@ from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
 from ultralytics.data.utils import check_det_dataset, check_cls_dataset
-from ultralytics.engine import validator, predictor
+from ultralytics.engine import validator, predictor, trainer
 from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
@@ -310,6 +310,11 @@ get_backend('ultralytics').patch()
 {fstr}""")
             return fname
         dist.generate_ddp_file = generate_ddp_file
+
+        def tflite_check_imgsz(*args, **kwds):
+            kwds['stride'] = 1
+            return check_imgsz(*args, **kwds)
+        trainer.check_imgsz = tflite_check_imgsz
         if model_path is not None and model_path.endswith('tflite'):
             print('SyNet: model provided is tflite.  Modifying validators'
                   ' to anticipate tflite output')
@@ -337,10 +342,6 @@ get_backend('ultralytics').patch()
                     if task != 'classify':
                         task_map[task][mode] = Wrap
             yolo_model.YOLO.task_map = task_map
-
-            def tflite_check_imgsz(*args, **kwds):
-                kwds['stride'] = 1
-                return check_imgsz(*args, **kwds)
 
             class TfliteAutoBackend(AutoBackend):
                 def __init__(self, *args, **kwds):
