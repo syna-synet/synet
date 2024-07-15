@@ -88,20 +88,20 @@ class Demosaic(Module):
                             [-1  , 2  , 4  , 2  ,-1  ],
                             [ 0  , 0  , 2  , 0  , 0  ],
                             [ 0  , 0  ,-1  , 0  , 0  ]],
-                           dtype=float32)
+                           dtype=float32) / 8
         # read "GRB" as green bayer location in red row, blue column.
         self.RatGRB = tensor([[ 0  , 0  , 0.5, 0  , 0  ],
                               [ 0  ,-1  , 0  ,-1  , 0  ],
                               [-1  , 4  , 5  , 4  ,-1  ],
                               [ 0  ,-1  , 0  ,-1  , 0  ],
                               [ 0  , 0  , 0.5, 0  , 0  ]],
-                             dtype=float32)
+                             dtype=float32) / 8
         self.RatB = tensor([[ 0  , 0  ,-1.5, 0  , 0  ],
                             [ 0  , 2  , 0  , 2  , 0  ],
                             [-1.5, 0  , 6  , 0  ,-1.5],
                             [ 0  , 2  , 0  , 2  , 0  ],
                             [ 0  , 0  ,-1.5, 0  , 0  ]],
-                           dtype=float32)
+                           dtype=float32) / 8
         self.k = 5
         self.basic_init()
 
@@ -195,11 +195,22 @@ class UnfoldedDemosaic(Demosaic):
                          ).permute(permute
                                    ).reshape(*B, 3, 2 * H, 2 * W)
 
+    def clf(self, x):
+        *B, H, W, C = x.shape
+        permute = 2, 0, 1
+        permute = tuple(range(len(B))) + tuple(v + len(B) for v in permute)
+        x = self.module(tensor(x, dtype=float32).permute(permute))
+        permute = 3, 0, 4, 1, 2
+        permute = tuple(range(len(B))) + tuple(v + len(B) for v in permute)
+        return x.reshape(*B, 2, 2, 3, H // 2, W // 2
+                         ).permute(permute
+                                   ).reshape(*B, H, W, 3).detach().numpy()
+
     def as_keras(self, x):
-        from keras.layers import Reshape, Transpose
-        H, W = askeras.kwds['imgsz']
-        Reshape((H, W, 3))(
-            Transpose((1, 3, 2, 4, 5))(
-                Reshape((H//2, W//2, 2, 2, 3))(x)
+        from keras.layers import Reshape, Permute
+        *_, H, W, _ = x.shape
+        return Reshape((H, W, 3))(
+            Permute((1, 3, 2, 4, 5))(
+                Reshape((H // 2, W // 2, 2, 2, 3))(x)
             )
         )

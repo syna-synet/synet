@@ -15,7 +15,8 @@ from typing import Optional, List
 from cv2 import (imread, rectangle, addWeighted, imwrite, resize,
                  circle, putText, FONT_HERSHEY_TRIPLEX)
 from numpy import (newaxis, ndarray, int8, float32 as npfloat32,
-                   concatenate as cat, max as npmax, argmax, empty)
+                   concatenate as cat, max as npmax, argmax, empty,
+                   array)
 from tensorflow import lite
 from torch import tensor, float32 as torchfloat32, sigmoid, tensordot, \
     repeat_interleave
@@ -347,15 +348,15 @@ def main(args=None):
 def get_mosaic(bayer_pattern):
     """convenience method for turning RGB image into Bayer for
     simulating Bayer model with RGB images"""
-    bayer_pattern = ndarray(['rgb'.index(c)
-                            for c in bayer_pattern.lower()])
-    rows = ndarray([0, 0, 1, 1])
-    cols = ndarray([0, 1, 0, 1])
+    bayer_pattern = array(['rgb'.index(c)
+                           for c in bayer_pattern.lower()])
+    rows = array([0, 0, 1, 1])
+    cols = array([0, 1, 0, 1])
 
     def mosaic(image):
-        out = empty((*image.shape[:2], 1))
+        out = empty((*image.shape[:2], 1), dtype=image.dtype)
         for yoff, xoff, chan in zip(rows, cols, bayer_pattern):
-            out[yoff::2, xoff::2] = image[yoff::2, xoff::2, chan]
+            out[yoff::2, xoff::2] = image[yoff::2, xoff::2, chan:chan + 1]
         return out
     return mosaic
 

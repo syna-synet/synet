@@ -65,7 +65,7 @@ class Module(Torch_Module):
 
     def to_keras(self, imgsz, in_channels=1, batch_size=1, **kwds):
         from keras import Input, Model
-        inp = Input(imgsz+[in_channels], batch_size=batch_size)
+        inp = Input(list(imgsz) + [in_channels], batch_size=batch_size)
         with askeras(imgsz=imgsz, **kwds):
             return Model(inp, self(inp))
 
