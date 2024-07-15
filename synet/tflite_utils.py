@@ -345,20 +345,18 @@ def main(args=None):
     imwrite(opt.task+'.png', img)
 
 
-def get_mosaic(bayer_pattern):
-    """convenience method for turning RGB image into Bayer for
-    simulating Bayer model with RGB images"""
-    bayer_pattern = array(['rgb'.index(c)
-                           for c in bayer_pattern.lower()])
-    rows = array([0, 0, 1, 1])
-    cols = array([0, 1, 0, 1])
+class get_mosaic:
+    def __init__(self, bayer_pattern):
+        self.bayer_pattern = array(['rgb'.index(c)
+                                    for c in bayer_pattern.lower()])
+        self.rows = array([0, 0, 1, 1])
+        self.cols = array([0, 1, 0, 1])
 
-    def mosaic(image):
+    def __call__(self, image):
         out = empty((*image.shape[:2], 1), dtype=image.dtype)
-        for yoff, xoff, chan in zip(rows, cols, bayer_pattern):
+        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
             out[yoff::2, xoff::2] = image[yoff::2, xoff::2, chan:chan + 1]
         return out
-    return mosaic
 
 
 if __name__ == '__main__':
