@@ -1,6 +1,31 @@
+from torch import zeros, tensor, arange, where, float32, empty
+from numpy import empty as npempty
+
 from .base import Module, Conv2d, askeras
 
-from torch import zeros, tensor, arange, where, float32
+
+class Mosaic(Module):
+    def __init__(self, bayer_pattern):
+        super().__init__()
+        self.bayer_pattern = tensor(['rgb'.index(c)
+                                     for c in bayer_pattern.lower()])
+        self.rows = tensor([0, 0, 1, 1])
+        self.cols = tensor([0, 1, 0, 1])
+
+    def forward(self, x):
+        if askeras.use_keras:
+            return x
+        *b, c, h, w = x.shape
+        y = empty((*b, 1, h, w), dtype=x.dtype, device=x.device)
+        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
+            y[..., 0, yoff::2, xoff::2] = x[..., chan, yoff::2, xoff::2]
+        return y
+
+    def clf(self, x):
+        y = npempty((*x.shape[:-1], 1), dtype=x.dtype)
+        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
+            y[..., yoff::2, xoff::2, 0] = x[..., yoff::2, xoff::2, chan]
+        return y
 
 
 class Demosaic(Module):
@@ -190,7 +215,7 @@ class UnfoldedDemosaic(Demosaic):
         *B, C, H, W = x.shape
         assert C == 12
         permute = 2, 3, 0, 4, 1
-        permute = (*B,) + (v + len(B) for v in permute)
+        permute = tuple(range(len(B))) + tuple(v + len(B) for v in permute)
         return x.reshape(*B, 2, 2, 3, H, W
                          ).permute(permute
                                    ).reshape(*B, 3, 2 * H, 2 * W)

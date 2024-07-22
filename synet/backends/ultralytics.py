@@ -25,6 +25,8 @@ from ultralytics.utils.checks import check_imgsz
 from . import Backend as BaseBackend
 from ..base import (askeras, Conv2d, ReLU, Upsample, GlobalAvgPool,
                     Dropout, Linear)
+from .. import layers
+from .. import asymmetric
 from ..layers import Sequential, CoBNRLU
 from ..tflite_utils import tf_run, concat_reshape
 
@@ -290,11 +292,11 @@ class Backend(BaseBackend):
         return model.yaml["image_shape"]
 
     def patch(self, model_path=None):
-        module = import_module("...layers", __name__)
-        for name in dir(module):
-            if name[0] != "_":
-                setattr(tasks, name, getattr(module, name))
-        tasks.Concat = module.Cat
+        for module in layers, asymmetric:
+            for name in dir(module):
+                if name[0] != "_":
+                    setattr(tasks, name, getattr(module, name))
+        tasks.Concat = layers.Cat
         tasks.Pose = Pose
         tasks.Detect = Detect
         tasks.Segment = Segment

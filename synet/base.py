@@ -266,40 +266,6 @@ class ConvTranspose2d(Module):
         return conv(x)
 
 
-class Mosaic(Module):
-    def __init__(self, bayer_pattern):
-        super().__init__()
-        self.bayer_pattern = tensor(['rgb'.index(c)
-                                     for c in bayer_pattern.lower()])
-        self.rows = tensor([0, 0, 1, 1])
-        self.cols = tensor([0, 1, 0, 1])
-
-    def forward(self, x):
-        if askeras.use_keras:
-            return x
-        *b, c, h, w = x.shape
-        y = empty((*b, 1, h, w), dtype=x.dtype, device=x.device)
-        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
-            y[..., 0, yoff::2, xoff::2] = x[..., chan, yoff::2, xoff::2]
-        return y
-
-
-class Grayscale(Module):
-    """Training frameworks often fix input channels to 3.  This
-grayscale layer can be added to the beginning of a model to convert to
-grayscale.  This layer is ignored when converting to tflite.  The end
-result is that the pytorch model can take any number of input
-channels, but the tensorflow (tflite) model expects exactly one input
-channel.
-
-    """
-
-    def forward(self, x):
-        if askeras.use_keras:
-            return x
-        return x.mean(1, keepdims=True)
-
-
 class Cat(Module):
     """Concatenate along feature dimension."""
 

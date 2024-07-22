@@ -13,9 +13,9 @@ should add a test case for it in tests/test_keras.py.
 """
 from typing import Union, Tuple, Optional
 
-from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Grayscale,
-                   Sequential, RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
-                   Shape, ModuleList, ChannelSlice, Mosaic, DepthwiseConv2d)
+from .base import (ReLU, BatchNorm, Conv2d, Module, Cat, Sequential,
+                   RNN, GRU, LSTM, Transpose, Reshape, Flip, Add,
+                   Shape, ModuleList, ChannelSlice, DepthwiseConv2d)
 
 
 # because this module only reinterprets Conv2d parameters, the test

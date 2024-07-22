@@ -345,19 +345,5 @@ def main(args=None):
     imwrite(opt.task+'.png', img)
 
 
-class get_mosaic:
-    def __init__(self, bayer_pattern):
-        self.bayer_pattern = array(['rgb'.index(c)
-                                    for c in bayer_pattern.lower()])
-        self.rows = array([0, 0, 1, 1])
-        self.cols = array([0, 1, 0, 1])
-
-    def __call__(self, image):
-        out = empty((*image.shape[:2], 1), dtype=image.dtype)
-        for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
-            out[yoff::2, xoff::2] = image[yoff::2, xoff::2, chan:chan + 1]
-        return out
-
-
 if __name__ == '__main__':
     main()
