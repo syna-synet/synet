@@ -87,7 +87,6 @@ class Camera(Module):
         return image
 
     def forward(self, im, normalized=True):
-        print(im.shape, im.min(), im.max())
         if askeras.use_keras:
             return im
         if normalized:
