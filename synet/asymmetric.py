@@ -72,7 +72,7 @@ class Camera(Module):
     def interp(self, x, xp, yp):
         if isinstance(x, ndarray):
             return interp(x, xp, yp)
-        return tensor(interp(x, xp, yp))
+        return tensor(interp(x.cpu(), xp, yp)).to(x.device)
 
     def map_to_linear(self, image):
         for yoff, xoff, chan in zip(self.mosaic.rows,
@@ -93,7 +93,7 @@ class Camera(Module):
             im = self.mosaic(im)
         this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2)
         im = self.map_to_linear(self.blur(im))
-        im += empty(im.shape).normal_(0.0, this_noise_sigma)
+        im += empty(im.shape, device=im.device).normal_(0.0, this_noise_sigma)
         if not self.to_bayer:
             im = self.demosaic(im)
         return im
