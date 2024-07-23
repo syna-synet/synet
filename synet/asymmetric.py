@@ -23,7 +23,7 @@ from os.path import join, dirname
 from cv2 import GaussianBlur as cv2GaussianBlur
 from numpy import array, interp, ndarray
 from numpy.random import normal
-from torch import empty, tensor
+from torch import empty, tensor, no_grad
 from torchvision.transforms import GaussianBlur
 
 from .demosaic import Demosaic, UnfoldedDemosaic, Mosaic
@@ -56,7 +56,8 @@ class Camera(Module):
                  noise_sigma=10):
         super().__init__()
         self.mosaic = Mosaic(bayer_pattern)
-        self.demosaic = UnfoldedDemosaic('malvar', bayer_pattern)
+        self.demosaic = UnfoldedDemosaic('malvar', bayer_pattern
+                                         ).requires_grad_(False)
         self.blur_sigma = blur_sigma
         self.noise_sigma = noise_sigma
         self.from_bayer = from_bayer
@@ -86,6 +87,7 @@ class Camera(Module):
                                                        self.yp[chan])
         return image
 
+    @no_grad
     def forward(self, im, normalized=True):
         if askeras.use_keras:
             return im
