@@ -86,9 +86,12 @@ class Camera(Module):
                                                        self.yp[chan])
         return image
 
-    def forward(self, im):
+    def forward(self, im, normalized=True):
+        print(im.shape, im.min(), im.max())
         if askeras.use_keras:
             return im
+        if normalized:
+            im *= 255
         if not self.from_bayer:
             im = self.mosaic(im)
         this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2)
@@ -96,7 +99,9 @@ class Camera(Module):
         im += empty(im.shape, device=im.device).normal_(0.0, this_noise_sigma)
         if not self.to_bayer:
             im = self.demosaic(im)
-        return im
+        if normalized:
+            im /= 255
+        return im.clip(0, 1 if normalized else 255)
 
     def clf(self, im):
         # augmentation should always be done on bayer image.
