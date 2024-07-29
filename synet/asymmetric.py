@@ -23,7 +23,7 @@ from os.path import join, dirname
 from cv2 import GaussianBlur as cv2GaussianBlur
 from numpy import array, interp, ndarray
 from numpy.random import normal
-from torch import empty, tensor, no_grad
+from torch import empty, tensor, no_grad, rand
 from torchvision.transforms import GaussianBlur
 
 from .demosaic import Demosaic, UnfoldedDemosaic, Mosaic
@@ -52,6 +52,7 @@ class Camera(Module):
                  bayer_pattern='gbrg',
                  from_bayer=False,
                  to_bayer=False,
+                 ratio=(1, 1, 1),
                  blur_sigma=0.4,
                  noise_sigma=10):
         super().__init__()
@@ -69,6 +70,7 @@ class Camera(Module):
         # yp = [rp, gp, bp], rgb sample points
         self.xp, *self.yp = array(color_cal).T
         self.blur = GaussianBlur(3, blur_sigma)
+        self.ratio = ratio
 
     def interp(self, x, xp, yp):
         if isinstance(x, ndarray):
@@ -95,9 +97,13 @@ class Camera(Module):
             im *= 255
         if not self.from_bayer:
             im = self.mosaic(im)
-        this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2)
-        im = self.map_to_linear(self.blur(im))
-        im += empty(im.shape, device=im.device).normal_(0.0, this_noise_sigma)
+        if rand(1) < self.ratio[0]:
+            im = self.blur(im)
+        if rand(1) < self.ratio[1]:
+            im = self.map_to_linear(im)
+        if rand(1) < self.ratio[2]:
+            this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2)
+            im += empty(im.shape, device=im.device).normal_(0.0, this_noise_sigma)
         if not self.to_bayer:
             im = self.demosaic(im)
         if normalized:
