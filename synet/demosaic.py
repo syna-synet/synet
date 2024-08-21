@@ -42,6 +42,36 @@ class Mosaic(Module):
                 Concatenate(-1)((c, d)))))
 
 
+class MosaicGamma(Mosaic):
+
+    def __init__(self, *args, normalized=True, gammas=[], **kwds):
+        super().__init__(*args, **kwds)
+        self.gammas = gammas
+        if normalized:
+            self.gamma_func = self.normalized_gamma
+        else:
+            self.gamma_func = self.unnormalized_gamma
+
+    def normalized_gamma(self, x, gamma):
+        return x**gamma
+
+    def unnormalized_gamma(self, x, gamma):
+        return ((x / 255)**gamma) * 255
+
+    def as_keras(self, x):
+        B, H, W, C = x.shape
+        from keras.layers import Concatenate, Reshape
+        a, b, c, d = [self.gamma_func(x[..., int(yoff)::2, int(xoff)::2,
+                                        int(chan):int(chan) + 1],
+                                      self.gammas[chan])
+                      for yoff, xoff, chan in
+                      zip(self.rows, self.cols, self.bayer_pattern)]
+        return Reshape((H, W, 1))(
+            Concatenate(-2)((
+                Concatenate(-1)((a, b)),
+                Concatenate(-1)((c, d)))))
+
+
 class Demosaic(Module):
 
     def __init__(self, dfilter, bayer_pattern, *scales):
