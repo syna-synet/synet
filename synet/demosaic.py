@@ -5,15 +5,18 @@ from .base import Module, Conv2d, askeras
 
 
 class Mosaic(Module):
-    def __init__(self, bayer_pattern):
+    def __init__(self, bayer_pattern, real_keras=False):
         super().__init__()
         self.bayer_pattern = tensor(['rgb'.index(c)
                                      for c in bayer_pattern.lower()])
         self.rows = tensor([0, 0, 1, 1])
         self.cols = tensor([0, 1, 0, 1])
+        self.real_keras = real_keras
 
     def forward(self, x):
         if askeras.use_keras:
+            if self.real_keras:
+                return self.as_keras(x)
             return x
         *b, c, h, w = x.shape
         y = empty((*b, 1, h, w), dtype=x.dtype, device=x.device)
@@ -26,6 +29,17 @@ class Mosaic(Module):
         for yoff, xoff, chan in zip(self.rows, self.cols, self.bayer_pattern):
             y[..., yoff::2, xoff::2, 0] = x[..., yoff::2, xoff::2, chan]
         return y
+
+    def as_keras(self, x):
+        B, H, W, C = x.shape
+        from keras.layers import Concatenate, Reshape
+        a, b, c, d = [x[..., int(yoff)::2, int(xoff)::2, int(chan):int(chan)+1]
+                      for yoff, xoff, chan in
+                      zip(self.rows, self.cols, self.bayer_pattern)]
+        return Reshape((H, W, 1))(
+            Concatenate(-2)((
+                Concatenate(-1)((a, b)),
+                Concatenate(-1)((c, d)))))
 
 
 class Demosaic(Module):
