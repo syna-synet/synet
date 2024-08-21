@@ -278,8 +278,8 @@ class UnfoldedDemosaic(Demosaic):
     def as_keras(self, x):
         from keras.layers import Reshape, Permute
         *_, H, W, _ = x.shape
-        return Reshape((H, W, 3))(
+        return Reshape((H * 2, W * 2, 3))(
             Permute((1, 3, 2, 4, 5))(
-                Reshape((H // 2, W // 2, 2, 2, 3))(x)
+                Reshape((H, W, 2, 2, 3))(x)
             )
         )
