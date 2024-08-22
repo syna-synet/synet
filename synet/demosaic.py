@@ -59,17 +59,22 @@ class MosaicGamma(Mosaic):
         return ((x / 255)**gamma) * 255
 
     def as_keras(self, x):
-        B, H, W, C = x.shape
-        from keras.layers import Concatenate, Reshape
+        from keras.layers import Concatenate
         a, b, c, d = [self.gamma_func(x[..., int(yoff)::2, int(xoff)::2,
                                         int(chan):int(chan) + 1],
                                       self.gammas[chan])
                       for yoff, xoff, chan in
                       zip(self.rows, self.cols, self.bayer_pattern)]
-        return Reshape((H, W, 1))(
-            Concatenate(-2)((
-                Concatenate(-1)((a, b)),
-                Concatenate(-1)((c, d)))))
+        return Concatenate(-2)((
+            Concatenate(-1)((a, b)),
+            Concatenate(-1)((c, d))))
+
+
+class UnfoldedMosaicGamma(MosaicGamma):
+    def as_keras(self, x):
+        B, H, W, C = x.shape
+        from keras.layers import Reshape
+        return Reshape((H, W, 1))(super().as_keras(x))
 
 
 class Demosaic(Module):
