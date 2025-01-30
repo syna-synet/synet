@@ -48,13 +48,13 @@ channel.
 
 class Camera(Module):
     def __init__(self,
-                 color_cal=join(dirname(__file__), 'camcal.csv'),
+                 gamma,
                  bayer_pattern='gbrg',
                  from_bayer=False,
                  to_bayer=False,
                  ratio=(1, 1, 1),
                  blur_sigma=0.4,
-                 noise_sigma=10):
+                 noise_sigma=10/255):
         super().__init__()
         self.mosaic = Mosaic(bayer_pattern)
         self.demosaic = UnfoldedDemosaic('malvar', bayer_pattern
@@ -63,54 +63,40 @@ class Camera(Module):
         self.noise_sigma = noise_sigma
         self.from_bayer = from_bayer
         self.to_bayer = to_bayer
-        if isinstance(color_cal, str):
-            with open(color_cal) as f:
-                color_cal = [[float(val) for val in line.split(',')]
-                             for line in f.read().split()[1:]]
-        # yp = [rp, gp, bp], rgb sample points
-        self.xp, *self.yp = array(color_cal).T
+        self.gamma = gamma
         self.blur = GaussianBlur(3, blur_sigma)
         self.ratio = ratio
 
-    def interp(self, x, xp, yp):
-        if isinstance(x, ndarray):
-            return interp(x, xp, yp)
-        return tensor(interp(x.cpu(), xp, yp)).to(x.device)
+    def gamma_correction(self, image):
 
-    def map_to_linear(self, image):
         for yoff, xoff, chan in zip(self.mosaic.rows,
                                     self.mosaic.cols,
                                     self.mosaic.bayer_pattern):
             # the gamma correction (from experiments) is channel dependent
-            image[..., yoff::2, xoff::2] = self.interp(image[...,
-                                                             yoff::2,
-                                                             xoff::2],
-                                                       self.xp,
-                                                       self.yp[chan])
+            image[yoff::2, xoff::2] = ((image[yoff::2, xoff::2]
+                                        ) ** self.gamma[chan])
         return image
 
-    @no_grad
-    def forward(self, im, normalized=True):
+    #@no_grad
+    def forward(self, im):
         if askeras.use_keras:
             return im
-        if normalized:
-            im *= 255
         if not self.from_bayer:
             im = self.mosaic(im)
         if rand(1) < self.ratio[0]:
             im = self.blur(im)
         if rand(1) < self.ratio[1]:
-            im = self.map_to_linear(im)
+            im = self.gamma_correction(im)
         if rand(1) < self.ratio[2]:
-            this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2)
-            im += empty(im.shape, device=im.device).normal_(0.0, this_noise_sigma)
+            this_noise_sigma, = empty(1).normal_(self.noise_sigma, 2/255)
+            im += empty(im.shape, device=im.device
+                        ).normal_(0.0, max(0, this_noise_sigma))
         if not self.to_bayer:
             im = self.demosaic(im)
-        if normalized:
-            im /= 255
-        return im.clip(0, 1 if normalized else 255)
+        return im.clip(0, 1)
 
     def clf(self, im):
+        assert False, "didn't update this function after refactor"
         # augmentation should always be done on bayer image.
         if not self.from_bayer:
             im = self.mosaic.clf(im)

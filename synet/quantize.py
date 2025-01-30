@@ -21,7 +21,8 @@ obtains arguments.
 
     """
     parser = ArgumentParser()
-    parser.add_argument("--backend", type=get_backend, default='ultralytics')
+    parser.add_argument("--backend", type=get_backend,
+                        default=get_backend('ultralytics'))
     parser.add_argument("--model", "--cfg", '--weights')
     parser.add_argument("--image-shape", nargs=2, type=int)
     parser.add_argument("--data")
