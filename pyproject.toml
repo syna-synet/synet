@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synet"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
     "torch",
     "tensorflow",
@@ -12,6 +12,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ultra = ["ultralytics"]
+hf = ['transformers', 'datasets', 'trl', 'peft', 'tf-keras', 'bitsandbytes']
 dev = ["synet[ultra]", "pytest"]
 
 [tool.setuptools.package-data]
