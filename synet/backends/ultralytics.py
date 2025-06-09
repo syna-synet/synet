@@ -128,6 +128,7 @@ class Detect(Torch_Detect):
         H, W = askeras.kwds['imgsz']
         anchors = generate_anchors(H, W, self.stride, .5)             # Nx2
         anchors = stack([anchors for batch in range(x[0].shape[0])])  # BxNx2
+        anchors.sparse= False
         box1 = Subtract(name="box1")((anchors, ltrb[:, :, :2]))
         box2 = Add(name="box2")((anchors, ltrb[:, :, 2:]))
         if askeras.kwds.get("xywh"):
