@@ -115,7 +115,7 @@ def representative_data(data, image_shape, N, channels):
 samples reshaped to image_shape.
 
     """
-    path = data.get('test', data['val'])
+    path = data.get('test') or data['val']
     f = []
     for p in path if isinstance(path, list) else [path]:
         if isdir(p):
