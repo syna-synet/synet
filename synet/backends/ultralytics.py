@@ -28,7 +28,6 @@ from ..base import (askeras, Conv2d, ReLU, Upsample, GlobalAvgPool,
 from .. import layers
 from .. import asymmetric
 from ..layers import Sequential, CoBNRLU
-from ..tflite_utils import tf_run, concat_reshape
 
 
 class DFL(Torch_DFL):
@@ -179,11 +178,11 @@ class Pose(Torch_Pose, Detect):
         from tensorflow.keras.activations import sigmoid
 
         if self.kpt_shape[1] == 3:
-            presence_chans = [i*3+2 for i in range(17)]
+            presence_chans = [i * 3 + 2 for i in range(self.kpt_shape[0])]
             pres, kpts = zip(*((Reshape((-1, self.kpt_shape[0], 1)
                                         )(presence(xi)),
                                 Reshape((-1, self.kpt_shape[0], 2)
-                                        )(keypoint(xi)*s*2))
+                                        )(keypoint(xi) * s * 2))
                                for presence, keypoint, xi, s in
                                ((*cv[-1].split_channels(presence_chans),
                                  cv[:-1](xi), s.item())
@@ -191,7 +190,7 @@ class Pose(Torch_Pose, Detect):
                                 zip(self.cv4, x, self.stride))))
             pres = Concatenate(-3, name="pres")([sigmoid(p) for p in pres])
         else:
-            kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi)*s*2)
+            kpts = [Reshape((-1, self.kpt_shape[0], 2))(cv(xi) * s * 2)
                     for cv, xi, s in
                     zip(self.cv4, x, self.stride)]
 
@@ -322,6 +321,7 @@ get_backend('ultralytics').patch()
             print('SyNet: model provided is tflite.  Modifying validators'
                   ' to anticipate tflite output')
             task_map = yolo_model.YOLO(model_path).task_map
+            from ..tflite_utils import concat_reshape
             for task in task_map:
                 for mode in 'predictor', 'validator':
                     class Wrap(task_map[task][mode]):
