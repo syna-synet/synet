@@ -54,8 +54,8 @@ image shape image_shape, using only number samples.
         backend.val_post(model, tflite, val_post, image_shape=image_shape)
 
 
-def get_tflite(backend, image_shape, model_path, data, number,
-               channels, kwds):
+def get_tflite(backend, image_shape, model_path, data, number=500,
+               channels=3, kwds=[]):
 
     # maybe get image shape
     if image_shape is None:

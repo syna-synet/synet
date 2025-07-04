@@ -1,5 +1,4 @@
-
-from importlib import import_module
+from os import stat
 from sys import argv
 
 from cv2 import imread, imwrite, resize
@@ -274,14 +273,21 @@ class Backend(BaseBackend):
     models = {}
     name = "ultralytics"
 
-    def get_model(self, model_path, full=False):
+    def get_model(self, model_path, full=False, cache=False):
 
         model_path = self.maybe_grab_from_zoo(model_path)
 
-        if model_path in self.models:
-            model = self.models[model_path]
+        if cache:
+            ctime = stat(model_path).st_ctime
+            if model_path in self.models:
+                model, old_ctime = self.models[model_path]
+                if old_ctime < ctime:
+                    model = YOLO(model_path)
+            else:
+                model = YOLO(model_path)
+            self.models[model_path] = model, ctime
         else:
-            model = self.models[model_path] = YOLO(model_path)
+            model = YOLO(model_path)
 
         if full:
             return model
@@ -397,10 +403,6 @@ def main():
 
             break
 
-
     # launch ultralytics
-    try:
-        from ultralytics.cfg import entrypoint
-    except:
-        from ultralytics.yolo.cfg import entrypoint
+    from ultralytics.cfg import entrypoint
     entrypoint()
