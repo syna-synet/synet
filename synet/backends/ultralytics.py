@@ -26,6 +26,7 @@ from ..base import (askeras, Conv2d, ReLU, Upsample, GlobalAvgPool,
                     Dropout, Linear)
 from .. import layers
 from .. import asymmetric
+from ..demosaic import Mosaic
 from ..layers import Sequential, CoBNRLU
 
 
@@ -363,6 +364,14 @@ get_backend('ultralytics').patch()
                         num_classes = self.output_details[2]['shape'][2]
                     self.kpt_shape = (self.output_details[-1]['shape'][-2], 3)
                     self.names = {k: self.names[k] for k in range(num_classes)}
+                    self.metadata = dict(batch=1)
+                    if self.input_details[0]['shape'][-1] == 1:
+                        self.mosaic = Mosaic('gbrg')
+                    else:
+                        self.mosaic = lambda x:x
+
+                def forward(self, im, *args, **kwds):
+                    return super().forward(self.mosaic(im), *args, **kwds)
 
             validator.check_imgsz = tflite_check_imgsz
             predictor.check_imgsz = tflite_check_imgsz
