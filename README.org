@@ -8,12 +8,11 @@
   to streamline the process of generating trained models to deploy on
   Synaptics chips, for internal and external use.
 
-  In addition to model definitions, analysis, data manipulation, and
-  data analysis tools, SyNet also aims to support several "backends".
-  For now, the only backend supported in Ultralytics.  Ultralytics
-  provides a suite of tools for training vision models and visualizing
-  those models.  Using Ultralytics as a backend, you can generate
-  trained vision models optimized for our chips.
+  SyNet aims to support several "backends".  For now, the only backend
+  supported in Ultralytics.  Ultralytics provides a suite of tools for
+  training vision models and visualizing those models.  Using
+  Ultralytics as a backend, you can generate trained vision models
+  optimized for our chips.
 
   This code is GPL, and the Ultralytics backend is AGPL, but the
   output of this code are tflite files.  These output tflite files are
@@ -72,12 +71,7 @@
      - camera augmentations
    - Enable arbitrary addition of box attributes to regress
      - age, orientation (pitch, yaw, roll)
-   - Complete miscelaneous tasks (see corresponding Gitlab milestone)
    - Mixed precision support
-
-** Future Research
-
-   - Hugging Face backend integration
 
 * Installation
 
@@ -87,7 +81,7 @@
   To install via pip:
 
   #+begin_src shell
-    pip install "synet[ultra] @ git+ssh://git@gitlab.synaptics.com/wssd-ai-algorithms/synet-fork.git"
+    pip install "synet[ultra] @ git+https://github.com/syna-synet/synet.git"
   #+end_src
 
   or if you have cloned to a local copy of the repository:
@@ -98,35 +92,28 @@
 
   where '-e' will allow you to make edits to your local clone after
   install.  If the install fails in any way, please report this to us.
-  In this case, you can use the exact library versions used to produce
-  the results in the Performance section above using the following
-  (requires CUDA 11.8)
-
-  #+begin_src shell
-    pip install -r /PATH/TO/LOCAL/SYNET/requirements-11.8.txt "/PATH/TO/LOCAL/SYNET[ultra]"
-  #+end_src
 
 * Quickstart
 
-  In the following, I give a simple example of how one can train a model on COCO, quantize to tflite, and benchmark that tflite on a custom dataset specified by a user's CUSTOM_DATA.yaml.  First, train the model:
+  In the following, I give a simple example of how one can train a
+  model on COCO, quantize to tflite, and benchmark that tflite on a
+  custom dataset specified by a user's CUSTOM_DATA.yaml.  First, train
+  the model:
   #+begin_src shell
     synet ultralytics train model=sabre-detect-vga.yaml data=coco.yaml
   #+end_src
   Quantize the trained model.
   #+begin_src shell
-    synet quantize --backend ultralytics --tflite runs/train/detect/weights/best.pt --data /path/to/coco.yaml
+    synet quantize --weights runs/train/detect/weights/best.pt --data /path/to/coco.yaml
   #+end_src
   Evaluate that trained and quantized model.
   #+begin_src shell
     synet ultralytics val model=runs/train/detect/weights/best.tflite task=detect data=coco.yaml
   #+end_src
-  If you have a custom evaluation dataset, you can evaluate on that (e.g. test split) as well
+  If you have a custom evaluation dataset, you can evaluate on that
+  (e.g. test split) as well
   #+begin_src shell
     synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True data=CUSTOM_DATA.yaml
-  #+end_src
-  And finally generate metrics for the model performance, especially at the .95 precision operating point.
-  #+begin_src shell
-    synet metrics CUSTOM_DATA.YAML --out-dirs runs/detect/val --project runs/detect/val --precision .95
   #+end_src
 
 * Core Shell API
@@ -144,10 +131,6 @@
     synet ultralytics train ...
     synet quantize --backend ultralytics ...
   #+end_src
-
-  Notice that while some backends are callable this way, the backend
-  may also need to be specified for other modules.  For instance,
-  synet.quantize needs to know with which backend to load the model.
 
   For information on training/visualizing models, see the section on
   backends below.
@@ -167,9 +150,9 @@
    #+end_src
 
    will create a tflite at ./exp/weights/best.tflite with input shape
-   [480, 640].  The image shape will default to whatever the model is
-   designed to take, but can be overrided in this way.  You may also
-   specify a model yaml like so:
+   [480, 640].  The image shape will default to whatever is defined on
+   the original model yaml but can be overrided via command line as in
+   the above.  You may also specify a model yaml like so:
 
    #+begin_src shell
      synet quantize --backend ultralytics --cfg sabre-detect-qvga.yaml
@@ -307,10 +290,9 @@
     This will put all output at ./runs/train/exp.  See "name",
     "project" and "exists-ok" in the Ultralytics docs for changing
     this.  The above command also tries to download the coco dataset
-    to ../datasets.
-
-    For any further information, see the ultralytics documentation for
-    training: https://docs.ultralytics.com/modes/train
+    to a sane directory.  For any further information, see the
+    ultralytics documentation for training:
+    https://docs.ultralytics.com/modes/train
 
 *** Validation
 
@@ -374,11 +356,6 @@
    If you notice that a bug is present despite the tests passing,
    please consider adding an appropriate test case in the 'tests'
    folder: https://docs.pytest.org/en/latest/getting-started.html
-
-** Docstring Style
-
-   Docstrings conform to numpy, scipy, and scikits docstring
-   conventions: https://numpydoc.readthedocs.io/en/latest/format.html
 
 ** Imports
 
