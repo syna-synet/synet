@@ -3,7 +3,7 @@ from os.path import abspath, dirname, join, isfile, commonpath
 from urllib import request
 
 
-WEIGHT_URL_ROOT = "http://profiler/"
+WEIGHT_URL_ROOT = "https://github.com/syna-synet/synet/releases/download/1.0.0/"
 
 
 def in_zoo(model, backend):
@@ -25,7 +25,7 @@ def get_config(model, backend):
 def get_weights(model, backend):
     if isfile(model):
         return model
-    with request.urlopen(join(WEIGHT_URL_ROOT, backend, model)) as remotefile:
+    with request.urlopen(join(WEIGHT_URL_ROOT, model)) as remotefile:
         with open(model, 'wb') as localfile:
             localfile.write(remotefile.read())
     return model
