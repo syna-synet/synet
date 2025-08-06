@@ -25,7 +25,7 @@
   The following table summarizes model performance on the person class
   of the COCO dataset for four major computer vision tasks.  All of
   these models run on VGA (640x480) resolution at about 10fps on the
-  Sabre A0 chip.
+  SR100 chip.
 
   | Task                  | Score | Metric        | Data                                                 |
   |-----------------------+-------+---------------+------------------------------------------------------|
@@ -38,7 +38,7 @@
 
 ** Current Features
 
-   - Models optimized for Sabre
+   - Models optimized for SR100
      - Memory and compute efficient model components
    - Usable with PyTorch and TensorFlow training libraries
    - Usable from the command line or python environment
@@ -102,7 +102,7 @@
   custom dataset specified by a user's CUSTOM_DATA.yaml.  First, train
   the model:
   #+begin_src shell
-    synet ultralytics train model=sabre-detect-vga.yaml data=coco.yaml
+    synet ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
   #+end_src
   Quantize the trained model.
   #+begin_src shell
@@ -149,7 +149,7 @@
 
    After this point, you are free to use SyNet models and tflites
    using the normal Ultralytics API, but do not try to use
-   Ultralytics' "export" functionality to deploy to Sabre.  Use
+   Ultralytics' "export" functionality to deploy to SR100.  Use
    SyNet's quantize instead.  The resulting models will not be
    properly optimized and are not expected to run on our chips.
 
@@ -169,10 +169,10 @@
     #+end_src
 
     For instance, if you want to train a person detect model, you
-    can train a VGA (640x480) model for the sabre chip with.
+    can train a VGA (640x480) model for the SR100 chip with.
 
     #+begin_src shell
-      synet ultralytics train model=sabre-detect-vga.yaml data=coco.yaml
+      synet ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
     #+end_src
 
     This will put all output at ./runs/train/exp.  See "name",
@@ -262,10 +262,10 @@ v    #+begin_src shell
    the above.  You may also specify a model yaml like so:
 
    #+begin_src shell
-     synet quantize --backend ultralytics --cfg sabre-detect-qvga.yaml
+     synet quantize --backend ultralytics --cfg sr100-detect-qvga.yaml
    #+end_src
 
-   This will place a quantized model at ./sabre-detect-qvga.tflite.
+   This will place a quantized model at ./sr100-detect-qvga.tflite.
    This will let you inspect the architecture, though it will not be a
    trained model, so the model output will be useless.  For more
    information see:
