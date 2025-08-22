@@ -274,7 +274,7 @@ class Backend(BaseBackend):
     models = {}
     name = "ultralytics"
 
-    def get_model(self, model_path, full=False, cache=False):
+    def get_model(self, model_path, full=False, cache=False, **kwds):
 
         model_path = self.maybe_grab_from_zoo(model_path)
 
@@ -283,12 +283,12 @@ class Backend(BaseBackend):
             if model_path in self.models:
                 model, old_ctime = self.models[model_path]
                 if old_ctime < ctime:
-                    model = YOLO(model_path)
+                    model = YOLO(model_path, **kwds)
             else:
                 model = YOLO(model_path)
             self.models[model_path] = model, ctime
         else:
-            model = YOLO(model_path)
+            model = YOLO(model_path, **kwds)
 
         if full:
             return model
