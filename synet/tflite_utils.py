@@ -193,7 +193,8 @@ def concat_reshape(model_output: List[ndarray],
         box1, box2, cls, kpts, pres = model_output
         _, num_kpts, _ = kpts.shape
     if task == "segment":
-        box1, box2, cls, proto, seg = model_output
+        #box1, box2, cls, proto, seg = model_output
+        box1, box2, cls, seg, proto = model_output
     if task == "detect":
         box1, box2, cls = model_output
 
