@@ -344,9 +344,11 @@ get_backend('ultralytics').patch()
                                                    xywh=True)
                             if isinstance(preds, tuple):
                                 preds = (tensor(preds[0][None])
-                                         .permute(0, 2, 1),
+                                         .permute(0, 2, 1)
+                                         .contiguous(),
                                          tensor(preds[1][None])
-                                         .permute(0, 2, 3, 1))
+                                         .permute(0, 2, 3, 1)
+                                         .contiguous())
                             else:
                                 preds = tensor(preds[None]).permute(0, 2, 1)
                             return super().postprocess(preds, *args, **kwds)
