@@ -347,7 +347,7 @@ get_backend('ultralytics').patch()
                                          .permute(0, 2, 1)
                                          .contiguous(),
                                          tensor(preds[1][None])
-                                         .permute(0, 2, 3, 1)
+                                         .permute(0, 3, 1, 2)
                                          .contiguous())
                             else:
                                 preds = tensor(preds[None]).permute(0, 2, 1)
