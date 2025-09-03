@@ -1,14 +1,12 @@
 from os import stat
 from sys import argv
 
-from cv2 import imread, imwrite, resize
 from numpy import array
 from torch import tensor
 from torch.nn import ModuleList
 from ultralytics import YOLO
 from ultralytics.data.utils import check_det_dataset, check_cls_dataset
 from ultralytics.engine import validator, predictor, trainer
-from ultralytics.engine.results import Results
 from ultralytics.models.yolo import model as yolo_model
 from ultralytics.nn import tasks
 from ultralytics.nn.autobackend import AutoBackend
@@ -18,7 +16,6 @@ from ultralytics.nn.modules.head import (Pose as Torch_Pose,
                                          Segment as Torch_Segment,
                                          Classify as Torch_Classify)
 from ultralytics.utils import dist
-from ultralytics.utils.ops import non_max_suppression, process_mask
 from ultralytics.utils.checks import check_imgsz
 
 from . import Backend as BaseBackend
