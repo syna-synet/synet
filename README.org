@@ -189,13 +189,15 @@
     validation set, and only with the floating point (non-quantized)
     model.  In order to use ultralytics to run validation on your
     quantized (.tflite) model, you will need to specify the model, the
-    task, the dataset split, and the canvas size.  Additionally, if
-    you want to use SyNet's advanced metrics tools, you should be sure
-    to cache the results of model evaluation by passing 'save_txt' and
-    'save_conf' like so:
+    task, the dataset split, and the canvas size.  Currently,
+    Ultralytics has the limitation that validation can only be done on
+    a square canvas.  Hence, you should first quantize your model a
+    seperate time with `--image-shape 640 640` and use that tflite
+    version for validation.  Your validation invokation will look
+    something like:
 
-v    #+begin_src shell
-      synet ultralytics val model=runs/train/detect/weights/best.tflite split=val task=detect save_txt=True save_conf=True imgsz=640,480 data=coco.yaml
+    #+begin_src shell
+      synet ultralytics val model=runs/train/detect/weights/best.tflite split=val task=detect save_txt=True save_conf=True imgsz=640 data=coco.yaml
     #+end_src
 
     This should place the results of model evaluation in
