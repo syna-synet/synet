@@ -1,24 +1,18 @@
 * Introduction
 
-  The SyNet repository is a library for developing networks for
-  Synaptics vision chips.  It consists of PyTorch model components
-  which can be exported to TensorFlow and tflite without an
+  The SR Model Trainer (SMT) repository is a library for developing
+  networks for Synaptics vision chips.  It consists of PyTorch model
+  components which can be exported to TensorFlow and tflite without an
   intermediate export backend like ONNX.  The resulting tflite files
-  are clean, and respect chip memory constraints.  The aim of SyNet is
+  are clean, and respect chip memory constraints.  The aim of SMT is
   to streamline the process of generating trained models to deploy on
   Synaptics chips, for internal and external use.
 
-  SyNet aims to support several "backends".  For now, the only backend
+  SMT aims to support several "backends".  For now, the only backend
   supported in Ultralytics.  Ultralytics provides a suite of tools for
   training vision models and visualizing those models.  Using
   Ultralytics as a backend, you can generate trained vision models
   optimized for our chips.
-
-  This code is GPL, and the Ultralytics backend is AGPL, but the
-  output of this code are tflite files.  These output tflite files are
-  data that is not covered by the copyright on the code of either code
-  base.  Consequently, the respective licenses of the code do not
-  apply to the output tflite files.
 
 * Performance
 
@@ -63,7 +57,7 @@
 
 ** Planned for later releases
 
-   - Models optimized for VS680
+   - Models optimized for SL series of chips
    - Automatic model selection from zoo
      - Select training resolution, inference resolution, and heads.
    - Dataset manipulation tools
@@ -83,13 +77,13 @@
   To install via pip:
 
   #+begin_src shell
-    pip install "synet[ultra] @ git+https://github.com/syna-synet/synet.git"
+    pip install "sr-model-trainer[ultra] @ git+https://github.com/syna-astra-mcu-dev/sr-model-trainer.git"
   #+end_src
 
   or if you have cloned to a local copy of the repository:
 
   #+begin_src shell
-    pip install [-e] "/PATH/TO/LOCAL/SYNET[ultra]"
+    pip install [-e] "/PATH/TO/LOCAL/SR-MODEL-TRAINER[ultra]"
   #+end_src
 
   where '-e' will allow you to make edits to your local clone after
@@ -102,20 +96,20 @@
   custom dataset specified by a user's CUSTOM_DATA.yaml.  First, train
   the model:
   #+begin_src shell
-    synet ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
+    smt ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
   #+end_src
   Quantize the trained model.
   #+begin_src shell
-    synet quantize --weights runs/train/detect/weights/best.pt --data /path/to/coco.yaml
+    smt quantize --weights runs/train/detect/weights/best.pt --data /path/to/coco.yaml
   #+end_src
   Evaluate that trained and quantized model.
   #+begin_src shell
-    synet ultralytics val model=runs/train/detect/weights/best.tflite task=detect data=coco.yaml
+    smt ultralytics val model=runs/train/detect/weights/best.tflite task=detect data=coco.yaml
   #+end_src
   If you have a custom evaluation dataset, you can evaluate on that
   (e.g. test split) as well
   #+begin_src shell
-    synet ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True data=CUSTOM_DATA.yaml
+    smt ultralytics val model=runs/train/detect/weights/best.tflite split=test task=detect save_txt=True save_conf=True data=CUSTOM_DATA.yaml
   #+end_src
 
 * Backends
@@ -125,19 +119,19 @@
 ** Ultralytics
 
    Any Ultralytics function (train, predict, val, etc.) will run
-   through SyNet with SyNet modules.  The basic shell syntax is:
+   through SMT with SMT modules.  The basic shell syntax is:
 
    #+begin_src shell
-     synet ultralytics [ultralytics ARGS]...
+     smt ultralytics [ultralytics ARGS]...
    #+end_src
 
-   This performs 3 SyNet-specific operations, then passes off
-   execution to the normal Ultralytics code entrypoint:
-   - Copy the model config from the synet zoo (synet/zoo/ultralytics) if necessary.
+   This performs 3 SMT-specific operations, then passes off execution
+   to the normal Ultralytics code entrypoint:
+   - Copy the model config from the SMT zoo if necessary.
    - Set the imgsz (image size) ultralytics parameter according to the
      model specification.
    - Apply patches to the Ultralytics modules where necessary to
-     enable proper SyNet model loading within Ultralytics.
+     enable proper SMT model loading within Ultralytics.
    If you need to use this backend through python (instead of a
    shell), then the only necessary step is to apply the patches as in
    the following snippet:
@@ -147,11 +141,11 @@
      get_backend('ultralytics').patch()
    #+end_src
 
-   After this point, you are free to use SyNet models and tflites
-   using the normal Ultralytics API, but do not try to use
-   Ultralytics' "export" functionality to deploy to SR100.  Use
-   SyNet's quantize instead.  The resulting models will not be
-   properly optimized and are not expected to run on our chips.
+   After this point, you are free to use SMT models and tflites using
+   the normal Ultralytics API, but do not try to use Ultralytics'
+   "export" functionality to deploy to SR100.  Use SMT's quantize
+   instead.  Otherwise, the resulting models will not be properly
+   optimized and are not expected to run on our chips.
 
    We give some examples/explanations for basic Ultralytics usage
    here, but for any further questions about Ultralytics, you should
@@ -161,18 +155,18 @@
 
 *** Train
 
-    The SyNet repository provides a thin wrapper around Ultralytics
+    The SMT repository provides a thin wrapper around Ultralytics
     training for simple training situations.  The basic usage is
 
     #+begin_src shell
-      synet ultralytics [OTHER ULTRALYTICS ARGS]
+      smt ultralytics [OTHER ULTRALYTICS ARGS]
     #+end_src
 
     For instance, if you want to train a person detect model, you
     can train a VGA (640x480) model for the SR100 chip with.
 
     #+begin_src shell
-      synet ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
+      smt ultralytics train model=sr100-detect-vga.yaml data=coco.yaml
     #+end_src
 
     This will put all output at ./runs/train/exp.  See "name",
@@ -197,12 +191,11 @@
     something like:
 
     #+begin_src shell
-      synet ultralytics val model=runs/train/detect/weights/best.tflite split=val task=detect save_txt=True save_conf=True imgsz=640 data=coco.yaml
+      smt ultralytics val model=runs/train/detect/weights/best.tflite split=val task=detect save_txt=True save_conf=True imgsz=640 data=coco.yaml
     #+end_src
 
     This should place the results of model evaluation in
-    runs/val/detect, which you can point to when calling "synet
-    metrcis" (see above).  For more information, see the ultralytics
+    runs/val/detect.  For more information, see the ultralytics
     documentation for validation:
     https://docs.ultralytics.com/modes/val
 
@@ -213,32 +206,32 @@
     the results of the model on your webcam stream with:
 
     #+begin_src shell
-      synet ultralytics predict model=vga/detect/finetuned.tflite source=0 imgsz='[480,640]' show=True iou=.3 conf=.5
+      smt ultralytics predict model=vga/detect/finetuned.tflite source=0 imgsz='[480,640]' show=True iou=.3 conf=.5
     #+end_src
 
-    Breaking this apart: You are calling SyNet with the ultralytics
+    Breaking this apart: You are calling SMT with the ultralytics
     backend in predict mode.  You are passing predict the path to your
     model (tflite in this case), telling it to run from a webcam
     (undocumented in Ultralytics, but this is source=0), setting the
-    image shape (ultralytics cannot infer image shape from tflite),
+    image shape (Ultralytics cannot infer image shape from tflite),
     telling it to generate a graphical display, and specifying iou and
     confidence thresholds.  For more information, see the ultralytics
     documentation: https://docs.ultralytics.com/modes/predict
 
 * Core Shell API
 
-  The basic syntax for running SyNet from a shell is:
+  The basic syntax for running SMT from a shell is:
 
   #+begin_src shell
-    synet [entrypoint] [entrypoint specific args]
+    smt [entrypoint] [entrypoint specific args]
   #+end_src
 
-  Where entrypoint can be a native SyNet module, or a backend like
+  Where entrypoint can be a native SMT module, or a backend like
   ultralytics.  For instance:
 
   #+begin_src shell
-    synet ultralytics train ...
-    synet quantize --backend ultralytics ...
+    smt ultralytics train ...
+    smt quantize --backend ultralytics ...
   #+end_src
 
   For information on training/visualizing models, see the section on
@@ -246,16 +239,16 @@
   
 ** Quantize
 
-   The SyNet repository includes the ability to quantize models
+   The SMT repository includes the ability to quantize models
 
    #+begin_src shell
-     synet quantize --backend BACKEND --weights MODEL_PT_SAVE --data REP_DATA
+     smt quantize --backend BACKEND --weights MODEL_PT_SAVE --data REP_DATA
    #+end_src
 
    For instance, running:
 
    #+begin_src shell
-     synet quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML --image-shape 480 640
+     smt quantize --backend ultralytics --weights ./exp/weights/best.pt --data /PATH/TO/CUSTOM_DATASET.YAML --image-shape 480 640
    #+end_src
 
    will create a tflite at ./exp/weights/best.tflite with input shape
@@ -264,7 +257,7 @@
    the above.  You may also specify a model yaml like so:
 
    #+begin_src shell
-     synet quantize --backend ultralytics --cfg sr100-detect-qvga.yaml
+     smt quantize --backend ultralytics --cfg sr100-detect-qvga.yaml
    #+end_src
 
    This will place a quantized model at ./sr100-detect-qvga.tflite.
@@ -273,12 +266,12 @@
    information see:
 
    #+begin_src shell
-     synet quantize --help
+     smt quantize --help
    #+end_src
 
 ** Metrics
 
-   SyNet's metrics code is an advanced model benchmarking tool which
+   SMT's metrics code is an advanced model benchmarking tool which
    allows the user to simultaneously score object detection on
    multiple datasets.  The benefit of doing multiple datasets is that
    it can find a confidence threshold by applying a precision
@@ -291,7 +284,7 @@
    confidences of each point are printed.  The basic usage is:
 
    #+begin_src shell
-     synet metrics DATA1.YAML DATA2.YAML... --out-dirs OUT_AIR1 OUT_DIR2... --project PLOT_DIR  --precisions PRECISION...
+     smt metrics DATA1.YAML DATA2.YAML... --out-dirs OUT_AIR1 OUT_DIR2... --project PLOT_DIR  --precisions PRECISION...
    #+end_src
 
    There must be one data yaml for each dataset, and they are expected
@@ -307,14 +300,14 @@
    backend:
 
    #+begin_src shell
-     synet ultralytics val model=/PATH/TO/BEST.TFLITE split=test imgsz=HEIGHT,WIDTH data=DATA1.YAML task=detect save_txt=True save_conf=True
+     smt ultralytics val model=/PATH/TO/BEST.TFLITE split=test imgsz=HEIGHT,WIDTH data=DATA1.YAML task=detect save_txt=True save_conf=True
    #+end_src
 
    See notes on validation in the ultralytics backend section below.
    For more information on the metrics code see:
 
    #+begin_src shell
-     synet metrics --help
+     smt metrics --help
    #+end_src
 
 * Core Python API
@@ -323,8 +316,8 @@
 
 *** Converting to Keras/TensorFlow
 
-    SyNet exists to be the glue between State of the Art training, and
-    our chips.  Each model component knows how to "export itself" to a
+    SMT exists to be the glue between State of the Art training, and
+    our chips.  Each model component knows how to export itself to a
     Keras/TensorFlow model.  This done approximately like so:
 
     #+begin_src python
@@ -336,7 +329,7 @@
           kmodel = Model(inp, model(inp))
     #+end_src
 
-    This method works so long as only SyNet blocks operate directly on
+    This method works so long as only SMT blocks operate directly on
     the input.  For a more complex example, see quantize.py.
 
 * Contributing
@@ -345,14 +338,13 @@
 
    Please run the test suite before pushing ANY changes upstream.  To
    do so, ensure that you have the development dependencies by
-   installing synet with the [dev] set of optional dependencies.
+   installing SMT with the [dev] set of optional dependencies.
 
    #+begin_src shell
-     pip install -e ...synet[dev]
+     pip install -e ...sr-model-trainer[dev]
    #+end_src
 
-   Then run the following in the synet root folder (the directory
-   containing the "synet" folder):
+   Then run the following in the root folder:
 
    #+begin_src shell
      pytest -v

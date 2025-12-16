@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "synet"
+name = "sr-model-trainer"
 version = "1.0.5"
 dependencies = [
     "torch",
@@ -19,4 +19,4 @@ dev = ["synet[ultra]", "pytest"]
 synet = ["zoo/**/*.yaml"]
 
 [project.scripts]
-synet = "synet.__main__:main"
+smt = "synet.__main__:main"
