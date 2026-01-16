@@ -87,8 +87,9 @@ def generate_anchors(H, W, stride, offset):
 
 
 class Detect(Torch_Detect):
-    def __init__(self, nc=80, ch=(), sm_split=None, junk=None):
-        super().__init__(nc, ch)
+    def __init__(self, nc=80, ch=(), sm_split=None, reg_max=16,
+                 junk1=None, junk2=None):
+        super().__init__(nc=nc, ch=ch, reg_max=reg_max)
         c2 = max((16, ch[0] // 4, self.reg_max * 4))
         self.cv2 = ModuleList(Sequential(Conv2d(x, c2, 3, bias=True),
                                          ReLU(6),
@@ -103,8 +104,6 @@ class Detect(Torch_Detect):
                                          ReLU(6),
                                          Conv2d(x, self.nc, 1, bias=True))
                               for x in ch)
-        if junk is None:
-            sm_split = None
         self.dfl = DFL(sm_split=sm_split)
 
     def forward(self, x):
@@ -145,9 +144,10 @@ class Detect(Torch_Detect):
 
 
 class Pose(Torch_Pose, Detect):
-    def __init__(self, nc, kpt_shape, ch, sm_split=None, junk=None):
-        super().__init__(nc, kpt_shape, ch)
-        Detect.__init__(self, nc, ch, sm_split, junk=junk)
+    def __init__(self, nc, kpt_shape, ch, sm_split=None, reg_max=16,
+                 junk1=None, junk2=None):
+        super().__init__(nc=nc, kpt_shape=kpt_shape, ch=ch, reg_max=reg_max)
+        Detect.__init__(self, nc=nc, ch=ch, sm_split=sm_split, reg_max=reg_max)
         self.detect = Detect.forward
         c4 = max(ch[0] // 4, self.nk)
         self.cv4 = ModuleList(Sequential(Conv2d(x, c4, 3),
@@ -215,9 +215,10 @@ class Pose(Torch_Pose, Detect):
 class Segment(Torch_Segment, Detect):
     """YOLOv8 Segment head for segmentation models."""
 
-    def __init__(self, nc=80, nm=32, npr=256, ch=(), sm_split=None, junk=None):
-        super().__init__(nc, nm, npr, ch)
-        Detect.__init__(self, nc, ch, sm_split, junk=junk)
+    def __init__(self, nc=80, nm=32, npr=256, ch=(), sm_split=None, reg_max=16,
+                 junk1=None, junk2=None):
+        super().__init__(nc=nc, nm=nm, npr=npr, ch=ch, reg_max=reg_max)
+        Detect.__init__(self, nc=nc, ch=ch, sm_split=sm_split, reg_max=reg_max)
         self.detect = Detect.forward
         self.proto = Proto(ch[0], self.npr, self.nm)  # protos
         c4 = max(ch[0] // 4, self.nm)
@@ -245,7 +246,7 @@ class Segment(Torch_Segment, Detect):
 
 class Classify(Torch_Classify):
     def __init__(self, junk, c1, c2, k=1, s=1, p=None, g=1):
-        super().__init__(c1, c2, k=k, s=s, p=p, g=g)
+        super().__init__(c1=c1, c2=c2, k=k, s=s, p=p, g=g)
         c_ = 1280
         assert p is None
         self.conv = CoBNRLU(c1, c_, k, s, groups=g)
